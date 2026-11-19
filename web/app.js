@@ -184,8 +184,7 @@ function renderSessionStats() {
     scope +
     `<span><b>${fmt(s.totalInput)}</b> in</span>` +
     `<span><b>${fmt(s.totalOutput)}</b> out</span>` +
-    `<span><b>${pct}%</b> cache</span>` +
-    `<span><b>$${(s.totalUsd || 0).toFixed(4)}</b></span>`;
+    `<span><b>${pct}%</b> cache</span>`;
 }
 
 function renderLatencyTrend() {
@@ -377,7 +376,7 @@ function paneHtml(rec, tab) {
 }
 
 function overviewHtml(rec, parsed, view) {
-  const c = parsed.cost || {};
+  const stats = parsed.usageStats || {};
   const u = parsed.response?.usage || {};
   const t = rec.timing || {};
   const body = rec.request?.body || {};
@@ -410,9 +409,8 @@ function overviewHtml(rec, parsed, view) {
       ${card("est. input", "≈" + fmt(parsed.estTokens), "tokens")}
       ${card("actual input", fmt(u.input_tokens), "tokens")}
       ${card("output", fmt(u.output_tokens), "tokens")}
-      ${card("cache read", fmt(c.cacheRead), (Math.round((c.cacheHitRate || 0) * 100)) + "% hit")}
-      ${card("cache write", fmt(c.cacheWrite), "tokens")}
-      ${card("cost", "$" + (c.usd || 0).toFixed(5))}
+      ${card("cache read", fmt(stats.cacheRead), (Math.round((stats.cacheHitRate || 0) * 100)) + "% hit")}
+      ${card("cache write", fmt(stats.cacheWrite), "tokens")}
       ${card("stop", parsed.response?.stop_reason || "—")}
     </div>
     ${errHtml}
@@ -661,7 +659,6 @@ function diffBlock(x, kind) {
 // readRoots() in src/paths.js — so it rolls up every capture under this cwd,
 // not other ccglass projects.
 
-const usd = (n) => "$" + Number(n || 0).toFixed(4);
 const pct = (r) => Math.round((r || 0) * 100) + "%";
 
 async function loadUsage() {
@@ -702,7 +699,6 @@ function renderSummary() {
       ${card("output", fmt(t.output), "tokens")}
       ${card("cache read", fmt(t.cacheRead), pct(t.cacheHitRate) + " hit")}
       ${card("cache write", fmt(t.cacheWrite), "tokens")}
-      ${card("cost", usd(t.usd))}
     </div>
     <p style="color:var(--muted)">range: ${esc(range)}</p>`;
 
@@ -733,9 +729,9 @@ function renderSummary() {
 
 function byModelHtml(rows) {
   if (!rows?.length) return `<p style="color:var(--muted)">no measured requests</p>`;
-  const head = `<tr><th>model</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache read</th><th class="n">cache hit</th><th class="n">cost</th></tr>`;
+  const head = `<tr><th>model</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache read</th><th class="n">cache hit</th></tr>`;
   const body = rows.map((r) =>
-    `<tr><td>${esc(r.model)}</td><td class="n">${fmt(r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${fmt(r.cacheRead)}</td><td class="n">${pct(r.cacheHitRate)}</td><td class="n">${usd(r.usd)}</td></tr>`
+    `<tr><td>${esc(r.model)}</td><td class="n">${fmt(r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${fmt(r.cacheRead)}</td><td class="n">${pct(r.cacheHitRate)}</td></tr>`
   ).join("");
   return `<table class="usage-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
@@ -743,10 +739,10 @@ function byModelHtml(rows) {
 function bySessionHtml(rows, { showName = true } = {}) {
   if (!rows?.length) return `<p style="color:var(--muted)">no sessions</p>`;
   const nameHead = showName ? `<th>name</th>` : "";
-  const head = `<tr>${nameHead}<th>session</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache hit</th><th class="n">cost</th></tr>`;
+  const head = `<tr>${nameHead}<th>session</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache hit</th></tr>`;
   const body = rows.map((r) => {
     const nameCell = showName ? `<td>${esc(r.name || "—")}</td>` : "";
-    return `<tr>${nameCell}<td>${esc(r.session)}</td><td class="n">${fmt(r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${pct(r.cacheHitRate)}</td><td class="n">${usd(r.usd)}</td></tr>`;
+    return `<tr>${nameCell}<td>${esc(r.session)}</td><td class="n">${fmt(r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${pct(r.cacheHitRate)}</td></tr>`;
   }).join("");
   return `<table class="usage-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }

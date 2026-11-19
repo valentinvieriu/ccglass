@@ -66,7 +66,7 @@ function loadApp() {
   const source = fs.readFileSync(new URL("../web/app.js", import.meta.url), "utf8")
     .replace(/\nloadSessions\(\)\.then\(connectStream\);\s*$/, "\n");
   vm.runInContext(source, context);
-  return { context, liveBody };
+  return { context, liveBody, elements };
 }
 
 test("Codex live stream omits request-side prompt/context", () => {
@@ -260,7 +260,7 @@ test("two Codex turns failing with the same error both stay visible", () => {
 
 test("Summary by-session shows the name column; by-timestamp omits it", () => {
   const { context } = loadApp();
-  const rows = [{ session: "2026-06-14T20-37-34-832", name: "usage-session-name", requests: 6, input: 12, output: 10955, cacheHitRate: 0.83, usd: 1.894 }];
+  const rows = [{ session: "2026-06-14T20-37-34-832", name: "usage-session-name", requests: 6, input: 12, output: 10955, cacheHitRate: 0.83 }];
 
   const bySession = context.bySessionHtml(rows);
   assert.match(bySession, /<th>name<\/th>/);
@@ -271,4 +271,39 @@ test("Summary by-session shows the name column; by-timestamp omits it", () => {
   assert.doesNotMatch(byTimestamp, /usage-session-name/);
   // the raw timestamp id is still present in both
   assert.match(byTimestamp, /2026-06-14T20-37-34-832/);
+});
+
+test("overview and summary retain token metrics but never display billing", () => {
+  const { context, elements } = loadApp();
+  const stats = { input: 100, output: 20, cacheRead: 900, cacheWrite: 0, totalInput: 1000, cacheHitRate: 0.9 };
+  const overview = context.overviewHtml({}, {
+    usageStats: stats,
+    response: { usage: { input_tokens: 1000, output_tokens: 20 } },
+  }, { system: [], messages: [], tools: [] });
+  assert.match(overview, /cache read/);
+  assert.match(overview, /900/);
+  assert.match(overview, /90% hit/);
+  assert.doesNotMatch(overview, /cost|\$/i);
+
+  context.fixture = {
+    session: "test-session", summary: true,
+    sessionStats: { totalInput: 1000, totalOutput: 20, cacheHitRate: 0.9 },
+    usage: {
+      sessionCount: 1, requestCount: 1, totals: stats, range: {},
+      byModel: [{ model: "test-model", requests: 1, ...stats }],
+      bySession: [{ session: "test-session", requests: 1, ...stats }],
+    },
+  };
+  vm.runInContext("Object.assign(state, fixture); renderSessionStats(); renderSummary();", context);
+  const header = elements.get("#sessionStats").innerHTML;
+  const summary = elements.get("#detail").innerHTML;
+  assert.match(header, /90%/);
+  assert.match(summary, /test-model/);
+  assert.match(summary, /cache read/);
+  assert.doesNotMatch(header + summary, /cost|\$/i);
+  for (const showName of [true, false]) {
+    const table = context.bySessionHtml(context.fixture.usage.bySession, { showName });
+    assert.match(table, /test-session/);
+    assert.doesNotMatch(table, /cost|\$/i);
+  }
 });

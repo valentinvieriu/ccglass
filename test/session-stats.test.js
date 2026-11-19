@@ -103,7 +103,7 @@ test("aggregateSessionStats filters by model when requested", () => {
   assert.equal(mini.totalInput, 50);
 });
 
-test("aggregateSessionStats sums tokens and cost across completed entries", () => {
+test("aggregateSessionStats sums tokens across completed entries without billing fields", () => {
   const stats = aggregateSessionStats([
     {
       format: "openai",
@@ -126,13 +126,12 @@ test("aggregateSessionStats sums tokens and cost across completed entries", () =
   assert.equal(stats.totalInput, 100);
   assert.equal(stats.totalOutput, 10);
   assert.ok(stats.cacheHitRate > 0.7);
-  assert.ok(stats.totalUsd > 0);
+  assert.equal("totalUsd" in stats, false);
 });
 
-test("aggregateSessionStats prices by the reassembled response model, not the empty request body", () => {
+test("aggregateSessionStats preserves usage with an empty request body", () => {
   // Bedrock/gateway traffic: the request body has no model, but the response
-  // carries one. Cost must use the response model's tier (Opus here) instead of
-  // falling through to the Sonnet default. Regression for the 4th cost callsite.
+  // carries usage. Token counts must not depend on a request model.
   const stats = aggregateSessionStats([
     {
       format: "anthropic",
@@ -147,15 +146,13 @@ test("aggregateSessionStats prices by the reassembled response model, not the em
       },
     },
   ]);
-  const sonnetDefault = (1000 * 15) / 1e6; // what body.model-only pricing gave
-  assert.ok(stats.totalUsd > sonnetDefault, `expected Opus pricing, got ${stats.totalUsd}`);
+  assert.equal(stats.totalOutput, 1000);
+  assert.equal(stats.completed, 1);
 });
 
-test("sessionModels and filtering use the priced response model, not a differing request alias", () => {
+test("sessionModels and filtering use the response model, not a differing request alias", () => {
   // A gateway sets a request-body model that differs from what the upstream
-  // actually answered with. Pricing already uses the response model; the dropdown
-  // and the filter must agree, or filtering by the real model returns nothing
-  // while the alias is charged at the response tier. Regression for Codex P2.
+  // actually answered with. The dropdown and filter must agree with the rollup.
   const rec = {
     format: "anthropic",
     request: { body: { model: "claude-sonnet-gateway-alias" } },
@@ -169,15 +166,15 @@ test("sessionModels and filtering use the priced response model, not a differing
     },
   };
 
-  // Dropdown offers the priced (response) model, not the request alias.
+  // Dropdown offers the response model, not the request alias.
   assert.deepEqual(sessionModels([rec]), ["claude-opus-4-5"]);
 
-  // Filtering by the real model matches and is charged.
+  // Filtering by the real model matches and counts usage.
   const real = aggregateSessionStats([rec], { model: "claude-opus-4-5" });
   assert.equal(real.total, 1);
-  assert.ok(real.totalUsd > 0);
+  assert.equal(real.totalOutput, 1000);
 
-  // Filtering by the request alias matches nothing — it was never the priced id.
+  // Filtering by the request alias matches nothing.
   const alias = aggregateSessionStats([rec], { model: "claude-sonnet-gateway-alias" });
   assert.equal(alias.total, 0);
 });

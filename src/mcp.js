@@ -1,7 +1,7 @@
 // ccglass MCP server: exposes the captured request/response logs to any MCP
 // client (e.g. Claude Code) as read-only query tools. This lets the agent
 // inspect what it actually sent to the model — sessions, request summaries,
-// full prompts, and token/cost rollups — without leaving the chat.
+// full prompts, and token rollups — without leaving the chat.
 //
 // Run: node src/mcp.js   (root resolved from $CCGLASS_ROOT or global path)
 
@@ -15,13 +15,13 @@ import { getAdapter, detectFormat } from "./formats/index.js";
 import { globalRoot, readRoots } from "./paths.js";
 import { summarizeUsage } from "./usage.js";
 
-// Parse one captured record's streamed response into { usage, cost } using the
+// Parse one captured record's streamed response into token usage using the
 // same per-format adapter the dashboard uses (Anthropic / OpenAI / DeepSeek…).
-function priceOf(rec) {
+function usageOf(rec) {
   const adapter = getAdapter(detectFormat(rec));
   const resp = rec.response?.raw ? adapter.reassemble(rec.response.raw) : rec.response || {};
   const usage = resp?.usage || {};
-  return { usage, cost: adapter.cost(resp?.model || rec.request?.body?.model, usage), reassembled: resp };
+  return usage;
 }
 
 const CWD = process.env.CCGLASS_CWD
@@ -34,7 +34,6 @@ const ROOT = process.env.CCGLASS_ROOT
 
 const ROOTS = readRoots(ROOT, CWD);
 
-const usd = (n) => `$${n.toFixed(4)}`;
 const json = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
 
 const server = new McpServer({ name: "ccglass", version: "0.1.0" });
@@ -44,7 +43,7 @@ server.registerTool(
   {
     title: "List capture sessions",
     description:
-      "List all ccglass capture sessions (newest first) with entry count, time range, token breakdown, and total USD cost.",
+      "List all ccglass capture sessions (newest first) with entry count, time range, and token breakdown.",
     inputSchema: {},
   },
   async () => {
@@ -61,7 +60,6 @@ server.registerTool(
         cacheRead: s.cacheRead,
         cacheWrite: s.cacheWrite,
       },
-      cost: usd(s.usd),
     }));
     return json({ root: ROOT, count: sessions.length, sessions });
   },
@@ -72,7 +70,7 @@ server.registerTool(
   {
     title: "Token usage summary",
     description:
-      "Aggregate token usage and USD cost across every captured session. Returns totals, per-model breakdown (sorted by spend), per-session breakdown, the date range covered, and an `unmeasured` count of records whose response had no parseable usage (in-flight, errored, non-LLM).",
+      "Aggregate token usage across every captured session. Returns totals, per-model breakdown (sorted by input tokens), per-session breakdown, the date range covered, and an `unmeasured` count of records whose response had no parseable usage (in-flight, errored, non-LLM).",
     inputSchema: {},
   },
   async () => {
@@ -104,7 +102,7 @@ server.registerTool(
   {
     title: "Request detail",
     description:
-      "Full detail for one captured request by id (e.g. '2026-05-23T11-40-32-981Z/0003'): model, system prompt, message roles, tool names, response status, and token usage + cost.",
+      "Full detail for one captured request by id (e.g. '2026-05-23T11-40-32-981Z/0003'): model, system prompt, message roles, tool names, response status, and token usage.",
     inputSchema: {
       id: z.string().describe("Request id in the form '<session>/<seq>', e.g. 'SESSION/0003'"),
     },
@@ -118,7 +116,7 @@ server.registerTool(
       : typeof b.system === "string"
         ? b.system
         : "";
-    const { usage, cost } = priceOf(rec);
+    const usage = usageOf(rec);
     return json({
       id: rec.id,
       ts: localTimestamp(rec.ts),
@@ -135,7 +133,6 @@ server.registerTool(
       })),
       tools: (b.tools || []).map((t) => t.name),
       usage,
-      cost,
     });
   },
 );

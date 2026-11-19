@@ -62,9 +62,17 @@ test("GET /api/usage returns the aggregator payload", async () => {
     assert.equal(u.totals.input, 140);
     assert.equal(u.totals.output, 60);
     assert.equal(u.totals.cacheRead, 200);
-    assert.ok(u.totals.usd > 0);
+    assert.equal("usd" in u.totals, false);
     assert.equal(u.byModel.length, 2);
     assert.equal(u.bySession.length, 1);
+    assert.equal("usd" in u.byModel[0], false);
+    assert.equal("usd" in u.bySession[0], false);
+
+    const requests = JSON.parse((await get(port, `/api/requests?session=${store.sessionId}`)).body);
+    const detail = JSON.parse((await get(port, `/api/request/${encodeURIComponent(requests.entries[0].id)}`)).body);
+    assert.equal("cost" in detail.parsed, false);
+    assert.equal(detail.parsed.usageStats.cacheRead, 200);
+    assert.equal(detail.parsed.usageStats.totalInput, 300);
   });
 
   fs.rmSync(root, { recursive: true, force: true });

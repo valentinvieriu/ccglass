@@ -1,8 +1,8 @@
 // OpenAI adapter: handles both the Responses API (/v1/responses, used by Codex)
 // and Chat Completions (/v1/chat/completions). Normalizes requests, streamed
-// responses, usage, and cost into the same shape the dashboard expects.
+// responses and usage into the same shape the dashboard expects.
 
-import { estimateTokens } from "../tokens.js";
+import { estimateTokens, tokenStats } from "../tokens.js";
 
 // ---- request → normalized view ------------------------------------------
 
@@ -236,22 +236,8 @@ export const openai = {
     return estimateTokens(s);
   },
 
-  cost(model, usage = {}) {
-    const p = priceFor(model);
-    const cached = usage.cache_read_input_tokens || 0;
-    const input = Math.max(0, (usage.input_tokens || 0) - cached); // uncached portion
-    const output = usage.output_tokens || 0;
-    const usd = (input * p.input + cached * p.cached + output * p.output) / 1e6;
-    const totalInput = usage.input_tokens || 0;
-    return {
-      input, // uncached portion, matching the Anthropic adapter's `input`
-      output,
-      cacheWrite: 0,
-      cacheRead: cached,
-      totalInput,
-      cacheHitRate: totalInput ? cached / totalInput : 0,
-      usd,
-    };
+  usageStats(usage = {}) {
+    return tokenStats(usage, { inputIncludesCache: true });
   },
 };
 
@@ -306,24 +292,4 @@ function normalizeFinal(json, normalizeUsage = normUsage) {
   }
   if (json.error) return { streamed: false, error: json.error, usage: {} };
   return { streamed: false, raw: JSON.stringify(json) };
-}
-
-// Approximate OpenAI pricing, USD per 1M tokens (input / cached input / output).
-const PRICES = {
-  "gpt-5": { input: 1.25, cached: 0.125, output: 10 },
-  codex: { input: 1.25, cached: 0.125, output: 10 },
-  "gpt-4o": { input: 2.5, cached: 1.25, output: 10 },
-  "gpt-4.1": { input: 2.0, cached: 0.5, output: 8 },
-  "o3": { input: 2.0, cached: 0.5, output: 8 },
-  mini: { input: 0.4, cached: 0.1, output: 1.6 },
-};
-function priceFor(model = "") {
-  const m = model.toLowerCase();
-  if (m.includes("codex")) return PRICES.codex;
-  if (m.includes("mini")) return PRICES.mini;
-  if (m.includes("gpt-5")) return PRICES["gpt-5"];
-  if (m.includes("4o")) return PRICES["gpt-4o"];
-  if (m.includes("4.1")) return PRICES["gpt-4.1"];
-  if (m.includes("o3")) return PRICES.o3;
-  return PRICES["gpt-5"];
 }

@@ -3,7 +3,7 @@
 
 import { reassembleResponse, blockText } from "../parse.js";
 import { requestBlocks } from "../diff.js";
-import { estimateRequestTokens, costFromUsage } from "../tokens.js";
+import { estimateRequestTokens, tokenStats } from "../tokens.js";
 
 // Readable body for a single content block in the message history. tool_use
 // shows its input args; tool_result shows the returned content (not the
@@ -65,5 +65,5 @@ export const anthropic = {
   blocks: requestBlocks,
   reassemble: reassembleResponse,
   estimateTokens: estimateRequestTokens,
-  cost: costFromUsage,
+  usageStats: tokenStats,
 };

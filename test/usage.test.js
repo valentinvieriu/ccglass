@@ -82,10 +82,9 @@ test("summarizeUsage aggregates totals, byModel, bySession across roots", () => 
   assert.equal(out.totals.cacheWrite, 0);
   assert.equal(out.totals.totalInput, 350 + 900);          // 1250
   assert.ok(Math.abs(out.totals.cacheHitRate - 900 / 1250) < 1e-9);
-  assert.ok(out.totals.usd > 0);
+  assert.equal("usd" in out.totals, false);
 
-  // byModel sorted by spend desc; opus should be more expensive per-call than sonnet
-  // even at half the input tokens, so it stays first.
+  // byModel sorted by total input tokens, including cached input.
   const models = out.byModel.map((m) => m.model);
   assert.equal(models[0], "claude-opus-4-7");
   assert.ok(out.byModel.find((m) => m.model === "claude-sonnet-4-6").requests === 1);
@@ -101,7 +100,7 @@ test("summarizeUsage aggregates totals, byModel, bySession across roots", () => 
   for (const session of out.bySession) {
     assert.ok(session.session);
     assert.ok(session.entries >= 1);
-    assert.ok(session.usd > 0);
+    assert.equal("usd" in session, false);
   }
 
   // Name resolution is opt-in: the default rollup never scans transcripts, so
@@ -132,13 +131,30 @@ test("summarizeUsage counts records without usage as unmeasured", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("summarizeUsage sorts models by total input, not output volume or price tier", () => {
+  const root = mkRoot("sort");
+  try {
+    const store = new Store({ root, format: "anthropic" });
+    record(store, "claude-opus-4-7", { input_tokens: 100, output_tokens: 100000 });
+    record(store, "claude-haiku-4-5", { input_tokens: 20, cache_read_input_tokens: 200 });
+    record(store, "claude-sonnet-4-6", { input_tokens: 220 });
+    const result = summarizeUsage([root]);
+    assert.deepEqual(result.byModel.map((row) => row.model), [
+      "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7",
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("summarizeUsage returns empty rollup when no sessions exist", () => {
   const root = mkRoot("empty");
   const out = summarizeUsage([root]);
   assert.equal(out.sessionCount, 0);
   assert.equal(out.requestCount, 0);
   assert.equal(out.unmeasured, 0);
-  assert.equal(out.totals.usd, 0);
+  assert.equal(out.totals.totalInput, 0);
+  assert.equal("usd" in out.totals, false);
   assert.deepEqual(out.byModel, []);
   assert.deepEqual(out.bySession, []);
   assert.equal(out.range.from, null);
@@ -173,7 +189,7 @@ test("summarizeUsage does not double-count OpenAI cached input", () => {
 test("summarizeUsage buckets by the reassembled response model, not the request body", () => {
   // Bedrock / gateway-proxied shape: the request body carries no model, but the
   // streamed response does. The rollup must key off the response so traffic does
-  // not collapse into "unknown" and get priced at the Sonnet default tier.
+  // not collapse into "unknown".
   const root = mkRoot("resp-model");
   const store = new Store({ root, format: "anthropic" });
   const rec = store.add({
@@ -194,12 +210,9 @@ test("summarizeUsage buckets by the reassembled response model, not the request 
   const out = summarizeUsage([root]);
   assert.equal(out.byModel.length, 1);
   assert.equal(out.byModel[0].model, "claude-opus-4-5");
-  // Priced at the Opus tier, not the Sonnet default that "unknown" would fall to.
-  const sonnetDefault = (100 * 3 + 50 * 15) / 1e6;
-  assert.ok(
-    out.byModel[0].usd > sonnetDefault,
-    `expected Opus-tier pricing > Sonnet default ${sonnetDefault}; got ${out.byModel[0].usd}`,
-  );
+  assert.equal(out.byModel[0].input, 100);
+  assert.equal(out.byModel[0].output, 50);
+  assert.equal("usd" in out.byModel[0], false);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
