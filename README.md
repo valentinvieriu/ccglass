@@ -1,5 +1,22 @@
 # ccglass
 
+## Fork changes for debug-proxy
+
+This fork supports the Docker-based inspection setup in `debug-proxy`:
+
+- `CCGLASS_BIND_HOST` overrides the proxy and dashboard bind address. It defaults
+  to `127.0.0.1`; Docker sets it to `0.0.0.0` and publishes only on host loopback.
+- The dashboard rejects non-loopback `Host` headers with HTTP 403.
+- Captured request `authorization` and `x-api-key` headers are fully replaced
+  with `[REDACTED]` unless `--no-redact` is explicitly selected. Forwarded
+  authentication is unchanged; other headers, bodies, and URLs are not redacted.
+- Reverse-proxy streaming honors downstream backpressure and cancels upstream
+  work when clients disconnect. Interrupted streams are recorded as errors and
+  close the transport rather than appending error text to a started response.
+
+Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js`
+to check these changes, or `npm test` for the complete upstream suite.
+
 **See exactly what your coding agent sends to the model.** A lightweight
 local logging reverse-proxy + web dashboard for **Claude Code, Codex,
 OpenCode, DeepSeek-TUI, Reasonix, CodeBuddy, Kimi, Ollama, OpenRouter, and more**.

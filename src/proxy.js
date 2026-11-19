@@ -31,6 +31,20 @@ export function createProxy({ upstream, store }) {
       });
       const startedAt = Date.now();
       rec.startedAt = startedAt;
+      let finished = false;
+      const fail = (error) => {
+        if (finished) return;
+        finished = true;
+        rec.response = { error: error.message, finishedAt: Date.now() };
+        store.update(rec);
+        if (res.destroyed) return;
+        if (res.headersSent) {
+          res.destroy(error);
+        } else {
+          res.writeHead(502, { "content-type": "text/plain" });
+          res.end(`ccglass: upstream error: ${error.message}`);
+        }
+      };
 
       // Forward upstream. Strip accept-encoding so the captured response is
       // plain text (no gzip/br to decode) — Claude Code handles uncompressed fine.
@@ -47,15 +61,25 @@ export function createProxy({ upstream, store }) {
           headers,
         },
         (proxyRes) => {
+          if (finished) {
+            proxyRes.destroy();
+            return;
+          }
+          proxyRes.on("error", fail);
           res.writeHead(proxyRes.statusCode, proxyRes.headers);
           const respChunks = [];
           let firstByteAt;
           proxyRes.on("data", (c) => {
             if (firstByteAt == null) firstByteAt = Date.now();
             respChunks.push(c);
-            res.write(c);
+            if (!res.write(c)) {
+              proxyRes.pause();
+              res.once("drain", () => proxyRes.resume());
+            }
           });
           proxyRes.on("end", () => {
+            if (finished) return;
+            finished = true;
             res.end();
             const doneAt = Date.now();
             rec.response = {
@@ -70,11 +94,12 @@ export function createProxy({ upstream, store }) {
         }
       );
 
-      proxyReq.on("error", (e) => {
-        if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
-        res.end(`ccglass: upstream error: ${e.message}`);
-        rec.response = { error: e.message, finishedAt: Date.now() };
-        store.update(rec);
+      proxyReq.on("error", fail);
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          fail(new Error("client disconnected"));
+          proxyReq.destroy();
+        }
       });
 
       proxyReq.end(bodyBuf);

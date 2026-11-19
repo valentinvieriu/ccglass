@@ -110,7 +110,7 @@ function parseArgs(argv) {
 function listen(server, port) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port ?? 0, "127.0.0.1", () => resolve(server.address().port));
+    server.listen(port ?? 0, process.env.CCGLASS_BIND_HOST || "127.0.0.1", () => resolve(server.address().port));
   });
 }
 

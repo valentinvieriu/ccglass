@@ -32,6 +32,15 @@ export function createServer({ roots, store }) {
   }
 
   return http.createServer((req, res) => {
+    try {
+      const hostname = new URL(`http://${req.headers.host}`).hostname;
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) {
+        throw new Error("forbidden host");
+      }
+    } catch {
+      res.writeHead(403, { "content-type": "text/plain" }).end("forbidden host");
+      return;
+    }
     const url = new URL(req.url, "http://localhost");
     const p = url.pathname;
 

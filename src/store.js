@@ -9,11 +9,6 @@ import { EventEmitter } from "node:events";
 import { packRecord, unpackRecord, gcBlobs } from "./blobs.js";
 import { latencyMs, recordModel } from "./session-stats.js";
 
-const mask = (v) =>
-  String(v)
-    .replace(/(Bearer\s+\S{6})\S+(\S{4})/g, "$1…REDACTED…$2")
-    .replace(/(sk-ant-[\w-]{6})\S+(\S{4})/g, "$1…REDACTED…$2");
-
 const pad = (n) => String(n).padStart(4, "0");
 
 function localSessionId() {
@@ -46,7 +41,7 @@ export class Store extends EventEmitter {
     const c = { ...h };
     for (const k of Object.keys(c)) {
       const lk = k.toLowerCase();
-      if (lk === "authorization" || lk === "x-api-key") c[k] = mask(c[k]);
+      if (lk === "authorization" || lk === "x-api-key") c[k] = "[REDACTED]";
     }
     return c;
   }
