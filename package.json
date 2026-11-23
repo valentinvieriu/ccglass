@@ -13,9 +13,16 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "node --watch scripts/dev.js",
-    "test": "node --test",
-    "prepublishOnly": "node --test",
+    "dev": "node scripts/dev-ui.js",
+    "dev:server": "node --watch scripts/dev.js",
+    "dev:ui": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.js test/*.test.mjs && vitest run",
+    "test:server": "node --test test/*.test.js test/*.test.mjs",
+    "test:ui": "vitest run",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
     "release": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",
     "release:major": "npm version major && git push --follow-tags"
@@ -46,5 +53,22 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cross-spawn": "^7.0.6",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.17",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "jsdom": "^27.2.0",
+    "lucide-react": "^0.554.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.2",
+    "vitest": "^4.0.13"
   }
 }

@@ -40,7 +40,7 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
   a completed recording. Existing header redaction is preserved; other captured
   data may contain secrets, so sanitize exports before sharing them.
 
-Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js test/web-live.test.js`
+Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js`
 to check these changes, or `npm test` for the complete upstream suite.
 
 ### Local development
@@ -48,28 +48,45 @@ to check these changes, or `npm test` for the complete upstream suite.
 From this checkout (`vendor/ccglass` in `debug-proxy`), run:
 
 ```sh
-vp install
-vp run dev
+npm ci
+npm run build
+npm run dev
 ```
 
-This starts the proxy at **http://127.0.0.1:6656** and the dashboard at
-**http://127.0.0.1:6657**, forwarding to **http://127.0.0.1:6655** without Docker.
+This starts the proxy at **http://127.0.0.1:6656**, the production dashboard at
+**http://127.0.0.1:6657**, and the hot-reloading React dashboard at
+**http://localhost:5173**, forwarding to **http://127.0.0.1:6655** without Docker.
 Keep the host API running and point clients at
 **http://127.0.0.1:6656/openai/v1**. Stop the Docker stack first if it uses the
 same ports. Browser requests from `http://localhost:5173` are allowed by default.
 
-Node watch mode restarts the server when imported server source changes.
-Refresh the browser to see edits to `web/`; those files are served directly.
+Edit components in `ui/src/`; Vite updates the development dashboard automatically.
+`npm run build` compiles TypeScript and Tailwind into `web/`, which the existing
+server serves directly at port 6657. No CDN, remote fonts, or frontend server is
+needed in production. Node watch mode restarts the backend on server-source edits.
 Captures are saved in the ignored `.ccglass/` directory and survive restarts.
-Press Ctrl-C to stop. This command requires Node 18.11 or later.
+Press Ctrl-C to stop. Frontend development requires Node 22.12+ (or Node 26);
+the packaged CLI runtime still supports Node 18.
+
+Use `npm run dev:ui` with an already-running backend, or `npm run dev:server`
+for the backend alone. `npm run typecheck`, `npm run test:ui`, and
+`npm run test:server` cover the frontend types, component/domain behavior,
+and backend separately. `npm test` runs both suites. Packaging builds `web/`
+automatically; generated assets are not edited or committed.
+
+The UI uses small components in `ui/src/components`, one REST/SSE hook in
+`useDashboard.ts`, and pure formatting/timeline helpers in `ui/src/lib`.
+It has no router or global state framework. Full payloads for the latest 500
+requests are cached for replay; all request summaries remain searchable and
+older full requests can still be opened individually or exported.
 
 Override defaults with shell environment variables (`CCGLASS_UPSTREAM`,
 `CCGLASS_PROXY_PORT`, `CCGLASS_DASHBOARD_PORT`, `CCGLASS_CORS_ORIGINS`) or CLI
 options, for example:
 
 ```sh
-vp run dev --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
-CCGLASS_CORS_ORIGINS='*' vp run dev
+npm run dev -- --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
+CCGLASS_CORS_ORIGINS='*' npm run dev
 ```
 
 **See exactly what your coding agent sends to the model.** A lightweight

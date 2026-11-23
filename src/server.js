@@ -16,7 +16,7 @@ import { summarizeUsage } from "./usage.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, "..", "web");
 
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
 
 // `store` is present in live (`ccglass claude`) mode; otherwise we read from disk.
 export function createServer({ roots, store }) {
