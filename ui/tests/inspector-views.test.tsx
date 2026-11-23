@@ -255,28 +255,34 @@ describe("request inspector", () => {
     expect(responseJson).toContain('"command": "ls"');
     expect(responseJson).toContain('"payload": "opaque value"');
     fireEvent.click(screen.getByRole("tab", { name: "flow" }));
-    expect(screen.getByText("tool_use")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Expand reasoning Thinking content"));
+    const response = screen.getByRole("region", { name: "Response" });
+    expect(within(response).getByText(/stop: tool_use/)).toBeInTheDocument();
     expect(screen.getByText("New thought", { selector: "pre" })).toBeInTheDocument();
+    fireEvent.click(within(response).getByRole("button", { name: /^Assistant · provider-extension/ }));
+    expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent('"payload": "opaque value"');
   });
 
-  it("separates sent context from new response and keeps useful tool previews visible when collapsed", () => {
+  it("keeps what was sent apart from what came back and mounts only the selected item in full", () => {
     const { container } = render(<RequestDetail record={record} activeTab="flow" />);
-    const response = screen.getByRole("region", { name: "New response" });
-    expect(within(response).getByText("ok")).toBeInTheDocument();
+    const response = screen.getByRole("region", { name: "Response" });
+    expect(within(response).getByRole("button", { name: /^Assistant · ok/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(within(response).queryByText("<img src=x onerror=alert(1)>")).not.toBeInTheDocument();
-    expect(container.querySelector("pre")).toBeNull();
-    fireEvent.click(screen.getByText("Request context"));
-    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
-    expect(screen.getByText("Unmatched tool result")).toBeInTheDocument();
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    const sent = screen.getByRole("region", { name: "New since the last reply" });
+    expect(within(sent).getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
+    expect(within(sent).getByText("Tool output")).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByText("read_file")).toBeInTheDocument();
-    expect(screen.queryByText("Read a local file")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("Available tools"));
+    expect(screen.queryByText(/read_file/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Sent with every request/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Tool definitions · 1 tool · read_file/ }));
     expect(screen.getByText("Read a local file")).toBeInTheDocument();
+    expect(container.querySelectorAll("pre")).toHaveLength(0);
   });
 
-  it("identifies call and output by tool name, links matching calls, and copies the full lazily mounted payload", async () => {
+  it("shows a call and its output as one row, previews both, and copies the complete output", async () => {
     const output = '{"text":"' + "complete output ".repeat(100) + '"}';
     const captured = {
       ...record,
@@ -294,54 +300,99 @@ describe("request inspector", () => {
     };
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
-    const scrollIntoView = vi.fn();
-    const originalScroll = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
-    try {
-      const { container, rerender } = render(<RequestDetail record={captured} activeTab="flow" />);
-      expect(screen.getByText("section: evidence.saw · text: Question the wait time")).toBeInTheDocument();
-      expect(screen.getByText("Requested")).toBeInTheDocument();
-      fireEvent.click(screen.getByText("Request context"));
-      expect(screen.getAllByText("read_item", { selector: "strong" })).toHaveLength(2);
-      expect(screen.getAllByText("Call 1 · hed-call")).toHaveLength(2);
-      expect(screen.getByText("id: evidence-2", { selector: ".flow-preview" })).toBeInTheDocument();
-      expect(container.querySelector("pre")).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "View call" }));
-      await waitFor(() => expect(screen.getByLabelText("Expand tool call read_item content")).toHaveFocus());
-      expect(scrollIntoView).toHaveBeenCalled();
-      fireEvent.click(screen.getByLabelText("Expand tool output read_item content"));
-      expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent("complete output");
-      fireEvent.click(screen.getByRole("button", { name: "Copy tool output read_item" }));
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(output));
-      rerender(<RequestDetail record={{ ...captured }} activeTab="flow" />);
-      expect(screen.getByLabelText("Collapse tool output read_item content")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
-      expect(container.querySelector("pre")).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
-      expect(screen.getAllByLabelText("Formatted JSON").length).toBeGreaterThan(1);
-      rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="flow" />);
-      expect(container.querySelector("pre")).toBeNull();
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScroll;
-    }
+    const { rerender } = render(<RequestDetail record={captured} activeTab="flow" />);
+    const requested = screen.getByRole("button", { name: /^raise_point/ });
+    expect(requested).toHaveAttribute("aria-pressed", "true");
+    expect(requested).toHaveTextContent("section: evidence.saw · text: Question the wait time");
+    expect(requested).toHaveTextContent("awaiting output");
+    const rows = screen.getAllByRole("button", { name: /^read_item/ });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("id: evidence-2");
+    expect(rows[0]).toHaveTextContent(`ok · ${output.length.toLocaleString()} chars`);
+    expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
+    fireEvent.click(rows[0]);
+    const preview = screen.getByRole("complementary", { name: "Preview" });
+    expect(within(preview).getByText(/Call 1 · Asked for in the model's last reply/)).toBeInTheDocument();
+    expect(within(preview).getByText("hed-call")).toHaveAttribute("title", "Call ID: matched-call");
+    const blocks = within(preview).getAllByLabelText("Formatted JSON");
+    expect(blocks[0]).toHaveTextContent('"id": "evidence-2"');
+    expect(blocks[1]).toHaveTextContent("complete output");
+    fireEvent.click(screen.getByRole("button", { name: "Copy output of read_item" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(output));
+    rerender(<RequestDetail record={{ ...captured }} activeTab="flow" />);
+    expect(screen.getByRole("button", { name: /^read_item/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(screen.getByRole("button", { name: /^read_item/ }), { key: "ArrowDown" });
+    expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveFocus();
+    rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="flow" />);
+    expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
   });
 
-  it("keeps failures and terminal events in the new response and does not imply unmatched tools are running", () => {
+  it("filters and searches inside folded zones and jumps from the weight bar to what it measures", () => {
+    const sent = (text: string, role = "user") => ({ role, type: "message", text });
+    const captured: RequestRecord = {
+      ...record,
+      parsed: {
+        estTokens: 1000,
+        view: {
+          system: [{ label: "system", text: "You are a careful agent." }],
+          tools: record.parsed!.view!.tools,
+          messages: [
+            sent("<system-reminder>\nStay in the sandbox.\n</system-reminder>"),
+            sent("<current_datetime>2026-01-01</current_datetime>\n\nFind the flaky test\n\n<canvas-context>none</canvas-context>"),
+            { role: "assistant", type: "tool_use", name: "Bash", callId: "c1", text: '{"command":"npm test"}' },
+            { role: "tool", type: "tool_result", callId: "c1", text: "exit code 1", isError: true },
+            sent("It fails one run in five.", "assistant"),
+            sent("Fix it please"),
+          ],
+        },
+        response: { content: [{ type: "text", text: "On it." }], stop_reason: "end_turn" },
+      },
+    };
+    render(<RequestDetail record={captured} activeTab="flow" />);
+    expect(screen.getByText(/~1,000/)).toBeInTheDocument();
+    const fresh = screen.getByRole("region", { name: "New since the last reply" });
+    expect(within(fresh).getAllByRole("button")).toHaveLength(2);
+    expect(within(fresh).getByRole("button", { name: /^User · Fix it please/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Bash/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prompts 2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Errors 1" }));
+    const failed = screen.getByRole("button", { name: /^Bash · npm test · error/ });
+    expect(failed).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("complementary", { name: "Preview" })).getByText("exit code 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+    fireEvent.change(screen.getByLabelText("Find in this request"), { target: { value: "flaky" } });
+    const prompt = screen.getByRole("button", { name: /^User · Find the flaky test/ });
+    expect(prompt.querySelector("mark")).toHaveTextContent("flaky");
+    expect(screen.getByText("What the user typed")).toBeInTheDocument();
+    expect(screen.getByText("Find the flaky test", { selector: "pre" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find in this request"), { target: { value: "" } });
+    expect(screen.queryByRole("button", { name: /^Harness ·/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Earlier turns/, expanded: false }));
+    expect(screen.getByRole("button", { name: /^Harness · system-reminder · Stay in the sandbox/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^System prompt/ }));
+    expect(screen.getByRole("button", { name: /^System prompt · You are a careful agent/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("keeps failures in the response and does not imply unmatched tools are running", () => {
     const pending: RequestRecord = {
       id: "pending",
       parsed: { view: { system: [], tools: [], messages: [{ type: "tool_use", name: "shell", callId: "earlier", text: '{"command":"pwd"}' }] } },
       response: null,
     };
     const { rerender } = render(<RequestDetail record={pending} activeTab="flow" />);
-    expect(screen.getByText("No result captured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^shell/ })).toHaveTextContent("no output captured");
     expect(screen.getByText("Waiting for the model response…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Jump to new" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^Errors/ })).not.toBeInTheDocument();
     rerender(<RequestDetail record={{ ...pending, id: "failed", response: { status: 502, error: "upstream disconnected" } }} activeTab="flow" />);
-    const response = screen.getByRole("region", { name: "New response" });
-    expect(within(response).getByText("Request failed")).toBeInTheDocument();
-    expect(within(response).getByText("error 502: upstream disconnected")).toBeInTheDocument();
-    expect(within(response).getByText("Error")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Jump to new" })).toBeEnabled();
+    const response = screen.getByRole("region", { name: "Response" });
+    const failure = within(response).getByRole("button", { name: /^Request failed/ });
+    expect(failure).toHaveTextContent("error 502: upstream disconnected");
+    expect(failure).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Errors 1" })).toBeInTheDocument();
   });
 
   it("supports keyboard tab navigation with unique panel relationships for multiple inspectors", () => {

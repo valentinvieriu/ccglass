@@ -2,12 +2,27 @@ import type { RequestRecord, TimelineStep, TimelineRow } from "../types";
 import { oneLine } from "./format";
 export { oneLine } from "./format";
 
+const sameArguments = (a: string, b: string) => {
+  const canonical = (text: string) => {
+    try {
+      return JSON.stringify(JSON.parse(text));
+    } catch {
+      return text.trim();
+    }
+  };
+  return canonical(a) === canonical(b);
+};
+
 /** Rebuild from immutable records so updated responses replace stale steps. */
 export function buildTimeline(records: RequestRecord[]): TimelineRow[] {
   const rows: TimelineRow[] = [];
   const seen = new Set<string>();
   const toolRows = new Map<string, TimelineRow>();
   const orphanResults = new Map<string, NonNullable<TimelineRow["result"]>>();
+  // Some providers stream tool calls without an id; the client then invents one
+  // and uses it from the next request on. Until that request arrives these rows
+  // can only be recognised by tool name and arguments.
+  const unidentified: TimelineRow[] = [];
   for (const record of [...records].sort((a, b) => (a.seq || 0) - (b.seq || 0))) {
     for (const step of liveFlowSteps(record)) {
       if (step.kind === "tool_result" && step.callId) {
@@ -26,6 +41,20 @@ export function buildTimeline(records: RequestRecord[]): TimelineRow[] {
       const key = liveStepKey(step);
       if (seen.has(key)) continue;
       seen.add(key);
+      const call = step.kind === "tool_use" || step.kind === "skill";
+      if (call && step.callId && !step.latest) {
+        const at = unidentified.findIndex(
+          (row) =>
+            row.kind === step.kind && row.name === step.name && sameArguments(row.text, step.text),
+        );
+        if (at >= 0) {
+          // The same call, now with the id its output will carry.
+          const [row] = unidentified.splice(at, 1);
+          row.callId = step.callId;
+          toolRows.set(step.callId, row);
+          continue;
+        }
+      }
       const row: TimelineRow = {
         ...step,
         key,
@@ -36,7 +65,8 @@ export function buildTimeline(records: RequestRecord[]): TimelineRow[] {
         status: record.response?.status,
         latencyMs: record.latencyMs,
       };
-      if ((step.kind === "tool_use" || step.kind === "skill") && step.callId) {
+      if (call && !step.callId && step.latest) unidentified.push(row);
+      if (call && step.callId) {
         toolRows.set(step.callId, row);
         const result = orphanResults.get(step.callId);
         if (result) {
@@ -179,7 +209,33 @@ export function flowSteps(
   return steps;
 }
 
+// Harness envelopes (<system-reminder>, <current_datetime>, <canvas-context>…)
+// all carry a dash or underscore in the tag name; ordinary HTML does not.
+const ENVELOPE = /<((?=[\w-]*[-_])[a-zA-Z][\w-]*)>[\s\S]*?<\/\1>/g;
+
+/**
+ * What the person typed: the first stretch of text outside the envelopes a
+ * harness wraps around it. Later stretches are usually the harness explaining
+ * one of its own envelopes.
+ */
+export function humanText(text: string) {
+  return (
+    String(text || "")
+      .replace(ENVELOPE, "\u0000")
+      .split("\u0000")
+      .map((part) => part.trim())
+      .find(Boolean) ?? ""
+  );
+}
+
+/** Name of the first envelope in a message, e.g. "system-reminder". */
+export function envelopeName(text: string) {
+  return /<((?=[\w-]*[-_])[a-zA-Z][\w-]*)>/.exec(String(text || ""))?.[1];
+}
+
 export function smartSummary(step: TimelineStep) {
+  if (step.kind === "user")
+    return oneLine(humanText(step.text) || step.text.replace(/<\/?[a-zA-Z][\w-]*>/g, " "), 200);
   if (step.kind === "tool_result") {
     let inner = String(step.text || "");
     try {
@@ -297,7 +353,7 @@ const PAT_DETECTORS: {
       /<user-prompt-submit-hook>|<session-start-hook>|<post-tool-use-hook>|<stop-hook>/.test(t),
     tag: "hook",
   },
-  { kinds: ["user"], match: (t) => /<system-reminder>/.test(t), tag: "reminder" },
+  { kinds: ["user"], match: (t) => /<system[-_]reminder>/.test(t), tag: "reminder" },
   {
     kinds: ["user"],
     match: (t) => /Caveat: The messages below were generated/i.test(t),

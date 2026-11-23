@@ -61,6 +61,7 @@ describe("dashboard integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Focus payload" }));
     expect(container.querySelector(".metrics-grid")).toBeNull();
     expect(container.querySelector(".request-panel")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Dashboard views" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "raw" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "Previous request" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Next request" }));
@@ -73,6 +74,7 @@ describe("dashboard integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show panels" }));
     expect(container.querySelector(".metrics-grid")).not.toBeNull();
     expect(container.querySelector(".request-panel")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Dashboard views" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back to session replay" }));
     expect(screen.queryByRole("button", { name: "Copy cURL" })).not.toBeInTheDocument();
   });

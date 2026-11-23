@@ -129,6 +129,7 @@ export default function App() {
     [view],
   );
 
+  const focusMode = focused && view !== "summary";
   const title =
     view === "summary"
       ? "Usage summary"
@@ -142,64 +143,67 @@ export default function App() {
       (pickedRecord?.id === selected ? pickedRecord : null)
     : null;
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="brand-icon">
-            <Terminal size={20} />
-          </span>
-          <span>ccglass</span>
-        </div>
-        <p className="brand-subtitle">Agent observability</p>
-        <nav aria-label="Dashboard views">
-          <button
-            className="nav-item"
-            aria-label="Request inspector"
-            aria-current={view === "requests" ? "page" : undefined}
-            onClick={() => navigate("requests")}
-          >
-            <Activity size={16} />
-            <span>Requests</span>
-            <span className="nav-count">{dashboard.entries.length}</span>
-          </button>
-          <button
-            className="nav-item"
-            aria-label="Compare requests"
-            aria-current={view === "diff" ? "page" : undefined}
-            onClick={() => navigate("diff")}
-          >
-            <ArrowLeftRight size={16} />
-            <span>Compare</span>
-          </button>
-          <button
-            className="nav-item"
-            aria-label="Usage summary"
-            aria-current={view === "summary" ? "page" : undefined}
-            onClick={() => navigate("summary")}
-          >
-            <BarChart3 size={16} />
-            <span>Summary</span>
-          </button>
-        </nav>
-        <div className="sidebar-divider" />
-        <div className="sidebar-note">
-          <LockKeyhole size={14} />
-          <span>Captures stay on this machine.</span>
-        </div>
-        <div className="sidebar-footer">
-          <ThemeToggle value={theme.preference} onChange={theme.choose} />
-          <strong className="flex items-center gap-2">
-            <span
-              className={`status-dot ${dashboard.connection === "connected" ? "status-ok" : "status-wait"}`}
-            />
-            {dashboard.connection === "connected"
-              ? "Connected to proxy"
-              : dashboard.connection === "connecting"
-                ? "Connecting…"
-                : "Reconnecting…"}
-          </strong>
-        </div>
-      </aside>
+    <div className={`shell ${focusMode ? "shell-focused" : ""}`}>
+      {/* Focus mode is for reading one payload: navigation steps aside too. */}
+      {!focusMode && (
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <span className="brand-icon">
+              <Terminal size={20} />
+            </span>
+            <span>ccglass</span>
+          </div>
+          <p className="brand-subtitle">Agent observability</p>
+          <nav aria-label="Dashboard views">
+            <button
+              className="nav-item"
+              aria-label="Request inspector"
+              aria-current={view === "requests" ? "page" : undefined}
+              onClick={() => navigate("requests")}
+            >
+              <Activity size={16} />
+              <span>Requests</span>
+              <span className="nav-count">{dashboard.entries.length}</span>
+            </button>
+            <button
+              className="nav-item"
+              aria-label="Compare requests"
+              aria-current={view === "diff" ? "page" : undefined}
+              onClick={() => navigate("diff")}
+            >
+              <ArrowLeftRight size={16} />
+              <span>Compare</span>
+            </button>
+            <button
+              className="nav-item"
+              aria-label="Usage summary"
+              aria-current={view === "summary" ? "page" : undefined}
+              onClick={() => navigate("summary")}
+            >
+              <BarChart3 size={16} />
+              <span>Summary</span>
+            </button>
+          </nav>
+          <div className="sidebar-divider" />
+          <div className="sidebar-note">
+            <LockKeyhole size={14} />
+            <span>Captures stay on this machine.</span>
+          </div>
+          <div className="sidebar-footer">
+            <ThemeToggle value={theme.preference} onChange={theme.choose} />
+            <strong className="flex items-center gap-2">
+              <span
+                className={`status-dot ${dashboard.connection === "connected" ? "status-ok" : "status-wait"}`}
+              />
+              {dashboard.connection === "connected"
+                ? "Connected to proxy"
+                : dashboard.connection === "connecting"
+                  ? "Connecting…"
+                  : "Reconnecting…"}
+            </strong>
+          </div>
+        </aside>
+      )}
       <main className="workspace">
         <DashboardHeader
           title={title}

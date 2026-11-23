@@ -1,318 +1,301 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronRight, FileText } from "lucide-react";
+import type { RequestRecord } from "../types";
 import {
-  ArrowDown,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Brain,
-  ChevronRight,
-  Cpu,
-  FileText,
-  Info,
-  MessageSquare,
-  Square,
-  Terminal,
-  Wrench,
-} from "lucide-react";
-import type { RequestRecord, TimelineStep } from "../types";
-import { flowSteps, smartSummary } from "../lib/timeline";
-import { CodeView, CopyButton } from "./JsonView";
+  approxTokens,
+  buildFlow,
+  keyTarget,
+  matchesFilter,
+  matchesQuery,
+  type FlowFilter,
+  type FlowItem,
+  type FlowZone,
+} from "../lib/flow";
+import { fmtMs } from "../lib/format";
+import { FilterBar, ItemPreview, ItemRow, KEY_HINT } from "./FlowItems";
 
-const isCall = (step: TimelineStep) => step.kind === "tool_use" || step.kind === "skill";
+const FILTERS: [FlowFilter, string][] = [
+  ["all", "All"],
+  ["prompt", "Prompts"],
+  ["assistant", "Assistant"],
+  ["tool", "Tool calls"],
+  ["error", "Errors"],
+  ["harness", "Harness"],
+];
+
+const ZONES: { id: FlowZone; title: string; foldable: boolean }[] = [
+  { id: "prefix", title: "Sent with every request", foldable: true },
+  { id: "carried", title: "Earlier turns", foldable: true },
+  { id: "new", title: "New since the last reply", foldable: false },
+  { id: "response", title: "Response", foldable: false },
+];
+
+const WHERE: Record<FlowZone, [message: string, tool: string]> = {
+  prefix: ["Sent with every request of this conversation.", ""],
+  carried: [
+    "Sent again from an earlier request. The model has already answered it.",
+    "Sent again from an earlier request, with its output.",
+  ],
+  new: [
+    "New since the model's last reply.",
+    "Asked for in the model's last reply. Its output is new in this request.",
+  ],
+  response: [
+    "Returned by the model for this request.",
+    "Asked for in this response. Its output arrives with the next request.",
+  ],
+};
+
+const tokenText = (tokens: number | null) => (tokens == null ? "" : ` · ~${approxTokens(tokens)} tok`);
 
 export default function FlowView({ record }: { record: RequestRecord }) {
-  const steps = useMemo(() => flowSteps(record), [record]);
-  const context = steps.filter((step) => !step.latest);
-  const response = steps.filter((step) => step.latest);
-  const tools = record.parsed?.view?.tools ?? [];
-  const requestFailed = record.parsed?.response?.error != null || record.response?.error != null ||
-    record.error != null || (record.response?.status ?? 0) >= 400;
-  const [contextOpen, setContextOpen] = useState(!response.length);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const responseHeading = useRef<HTMLHeadingElement>(null);
+  const flow = useMemo(() => buildFlow(record), [record]);
+  const { items } = flow;
   const id = useId();
-  const calls = new Map<string, { step: TimelineStep; number: number; index: number }>();
-  const results = new Map<string, number>();
-  let callNumber = 0;
-  steps.forEach((step, index) => {
-    if (isCall(step)) {
-      callNumber++;
-      if (step.callId) calls.set(step.callId, { step, number: callNumber, index });
-    } else if (step.kind === "tool_result" && step.callId) results.set(step.callId, index);
+  const [filter, setFilter] = useState<FlowFilter>("all");
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState<Partial<Record<FlowZone, boolean>>>({});
+  const firstOf = (zone: FlowZone) => items.find((item) => item.zone === zone)?.id;
+  const [picked, setPicked] = useState<string | undefined>(
+    () => firstOf("response") ?? firstOf("new") ?? items[0]?.id,
+  );
+  const focusPicked = useRef(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+
+  const query = search.trim().toLowerCase();
+  const searching = filter !== "all" || query !== "";
+  const byZone = (zone: FlowZone) => items.filter((item) => item.zone === zone);
+  const zones = ZONES.map((zone) => {
+    const all = byZone(zone.id);
+    const isOpen = !zone.foldable || searching || !!open[zone.id];
+    const shown = isOpen
+      ? all.filter((item) => matchesFilter(filter, item) && matchesQuery(query, item))
+      : [];
+    return { ...zone, all, isOpen, shown };
+  }).filter((zone) => zone.all.length || zone.id === "response");
+  const visible = zones.flatMap((zone) => zone.shown);
+  // A filter or a fold may hide the picked row; the preview follows what is listed.
+  const selected = visible.find((item) => item.id === picked) ?? visible[0];
+  const rowId = (item: FlowItem) => `${id}-${item.id}`;
+
+  useEffect(() => {
+    if (!focusPicked.current || !selected) return;
+    focusPicked.current = false;
+    const row = document.getElementById(rowId(selected));
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView?.({ block: "nearest" });
   });
-  const rowId = (index: number) => `${id}-step-${index}`;
-  const reveal = (index: number) => {
-    if (!steps[index].latest) setContextOpen(true);
-    // The context disclosure must commit before its newly visible target can be focused.
-    requestAnimationFrame(() => {
-      const target = document.getElementById(rowId(index));
-      target?.scrollIntoView({ block: "center" });
-      target?.focus({ preventScroll: true });
-    });
+
+  const select = (itemId: string | undefined, focus = false) => {
+    if (!itemId) return;
+    focusPicked.current = focus;
+    setPicked(itemId);
   };
-  const toggle = (index: number) =>
-    setExpanded((previous) => {
-      const next = new Set(previous);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
+  const reveal = (itemId: string | undefined) => {
+    const item = items.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+    setFilter("all");
+    setSearch("");
+    setOpen((previous) => ({ ...previous, [item.zone]: true }));
+    select(item.id, true);
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const key = event.key;
+    const target = keyTarget(key, visible, selected);
+    if (target) {
+      event.preventDefault();
+      select(target.id, true);
+    } else if (key === "e") {
+      const errors = items.filter((item) => matchesFilter("error", item));
+      if (!errors.length) return;
+      event.preventDefault();
+      const at = selected ? errors.indexOf(selected) : -1;
+      reveal(errors[(at + 1) % errors.length].id);
+    } else if (key === "/") {
+      event.preventDefault();
+      searchInput.current?.focus();
+    }
+  };
 
-  function renderStep(step: TimelineStep) {
-    const index = steps.indexOf(step);
-    const call = step.callId ? calls.get(step.callId) : undefined;
-    const resultIndex = step.callId ? results.get(step.callId) : undefined;
-    const tool = isCall(step);
-    const result = step.kind === "tool_result";
-    const thinking = step.kind === "thinking" || (step.kind === "assistant" && step.label === "reasoning");
-    const failed = !!step.isError ||
-      (step.kind === "stop" && (requestFailed || /^error(?:\s|$)/.test(step.text)));
-    const title = tool
-      ? step.name || "Unnamed tool"
-      : result
-        ? call?.step.name || "Unmatched tool result"
-        : step.kind === "stop"
-          ? failed ? "Request failed" : "Turn completed"
-          : thinking
-            ? "Thinking"
-            : step.kind === "assistant"
-              ? step.label ? `Assistant · ${step.label}` : "Assistant"
-              : "User";
-    const label = tool
-      ? step.kind === "skill" ? "Skill call" : "Tool call"
-      : result
-        ? "Tool output"
-        : thinking
-          ? "Reasoning"
-          : step.kind === "stop" ? "Stop reason" : "Message";
-    const Icon = tool
-      ? Wrench
-      : result
-        ? Terminal
-        : thinking
-          ? Brain
-          : step.kind === "assistant"
-            ? Cpu
-            : step.kind === "stop" ? Square : MessageSquare;
-    const preview = tool && step.text.trim() === "{}"
-      ? "No arguments"
-      : smartSummary(step) || "Empty content";
-    const open = expanded.has(index);
-    const counterpart = result ? call?.index : resultIndex;
-    const status = failed
-      ? "Error"
-      : result
-        ? "Returned"
-        : tool
-          ? resultIndex != null
-            ? "Result captured"
-            : step.latest ? "Requested" : "No result captured"
-          : undefined;
-    const definition = tools.find(
-      (definition) => definition.name === (tool ? step.name : call?.step.name),
-    );
-    return (
-      <li
-        key={index}
-        className={`flow-event ${step.latest ? "flow-event-new" : ""}`}
-        data-kind={step.kind}
-        data-source={step.latest ? "response" : "context"}
-      >
-        <details className={`flow-card ${failed ? "flow-card-error" : ""}`} open={open}>
-          <summary
-            id={rowId(index)}
-            aria-label={`${open ? "Collapse" : "Expand"} ${label.toLowerCase()} ${title} content`}
-            aria-controls={`${rowId(index)}-body`}
-            onClick={(event) => {
-              event.preventDefault();
-              toggle(index);
-            }}
-          >
-            <span className={`flow-icon ${failed ? "flow-icon-error" : result ? "flow-icon-result" : tool ? "flow-icon-tool" : step.latest ? "flow-icon-new" : ""}`}>
-              <Icon size={15} aria-hidden="true" />
-            </span>
-            <span className="flow-event-main">
-              <span className="flow-event-heading">
-                <span className="flow-kind">{label}</span>
-                <strong title={definition?.description}>{title}</strong>
-              </span>
-              <span className={`flow-preview ${tool ? "mono" : ""}`}>{preview}</span>
-            </span>
-            <span className="flow-event-meta">
-              {status && (
-                <span className={`badge ${failed ? "badge-error" : result ? "badge-success" : "badge-muted"}`}>
-                  {status}
-                </span>
-              )}
-              <span className="flow-size">{step.text.length.toLocaleString()} chars</span>
-            </span>
-            <ChevronRight size={14} className="flow-chevron" aria-hidden="true" />
-          </summary>
-          <div id={`${rowId(index)}-body`}>
-            {open && (
-              <div className="flow-body">
-                <div className="flow-body-heading">
-                  <span>{tool ? "Captured arguments" : result ? "Captured output" : "Full content"}</span>
-                  <CopyButton text={step.text} label={`Copy ${label.toLowerCase()} ${title}`} displayLabel="Copy" />
-                </div>
-                <CodeView text={step.text} />
-              </div>
-            )}
-          </div>
-        </details>
-        {step.callId && step.kind !== "stop" && (
-          <div className="flow-call-link">
-            <span className="mono" title={`Call ID: ${step.callId}`}>
-              {call ? `Call ${call.number}` : "Call ID"} · {step.callId.slice(-8)}
-            </span>
-            {counterpart != null && (
-              <button type="button" className="flow-link" onClick={() => reveal(counterpart)}>
-                <ArrowUpRight size={11} aria-hidden="true" />
-                {result ? "View call" : "View output"}
-              </button>
-            )}
-            {result && call && <span className="flow-call-preview">{smartSummary(call.step)}</span>}
-          </div>
-        )}
-      </li>
-    );
-  }
-
-  if (!steps.length && !tools.length)
+  if (!items.length && !flow.waiting)
     return (
       <div className="empty-state">
         <FileText size={24} />
         <p>No conversation steps in this request.</p>
       </div>
     );
-  const messages = context.filter(
-    (step) => step.kind === "user" || step.kind === "assistant" || step.kind === "thinking",
-  ).length;
-  const contextCalls = context.filter(isCall).length;
-  const outputs = context.filter((step) => step.kind === "tool_result").length;
+
+  const sectionTokens = (zone: FlowZone) => {
+    const ids = zone === "prefix" ? ["system", "tools"] : [zone];
+    const parts = flow.sections.filter((section) => ids.includes(section.id));
+    return parts.length && parts.every((section) => section.tokens != null)
+      ? parts.reduce((total, section) => total + (section.tokens ?? 0), 0)
+      : null;
+  };
+  const subtitle = (zone: (typeof zones)[number]) => {
+    const count = `${zone.all.length} ${zone.all.length === 1 ? "item" : "items"}`;
+    if (searching) return `${zone.shown.length} of ${zone.all.length} match`;
+    if (zone.id === "prefix") {
+      const tools = items.find((item) => item.kind === "tools")?.tools?.length ?? 0;
+      const system = zone.all.some((item) => item.kind === "system");
+      return (
+        [system && "System prompt", tools && `${tools} ${tools === 1 ? "tool" : "tools"}`].filter(Boolean).join(" + ") +
+        tokenText(sectionTokens("prefix"))
+      );
+    }
+    if (zone.id === "carried")
+      return `${count}${tokenText(sectionTokens("carried"))} · already answered`;
+    if (zone.id === "new")
+      return `${count}${tokenText(sectionTokens("new"))} · added by the agent`;
+    return [
+      count,
+      flow.outputTokens != null && `${flow.outputTokens.toLocaleString()} tok`,
+      record.latencyMs != null && fmtMs(record.latencyMs),
+      flow.stopReason && `stop: ${flow.stopReason}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  const awaiting = items.some((item) => item.zone === "response" && item.status === "awaiting");
+
   return (
     <div className="flow-view">
-      <div className="flow-toolbar">
-        <p>What went in. What came back.</p>
-        <div>
-          <button
-            type="button"
-            className="button button-ghost button-sm"
-            onClick={() => {
-              setContextOpen(true);
-              setToolsOpen(true);
-              setExpanded(new Set(steps.map((_, index) => index)));
-            }}
-          >Expand all</button>
-          <button
-            type="button"
-            className="button button-ghost button-sm"
-            onClick={() => {
-              setContextOpen(false);
-              setToolsOpen(false);
-              setExpanded(new Set());
-            }}
-          >Collapse all</button>
-          <button
-            type="button"
-            className="button button-sm"
-            disabled={!response.length}
-            onClick={() => {
-              responseHeading.current?.scrollIntoView({ block: "start" });
-              responseHeading.current?.focus({ preventScroll: true });
-            }}
-          ><ArrowDown size={12} />Jump to new</button>
-        </div>
-      </div>
-      <div className="flow-legend" aria-label="Flow color key">
-        <span><i className="flow-dot-context" />Sent context</span>
-        <span><i className="flow-dot-new" />New response</span>
-        <span><i className="flow-dot-tool" />Tool call</span>
-        <span><i className="flow-dot-result" />Returned output</span>
-        <span><i className="flow-dot-error" />Error</span>
-      </div>
-      <details className="flow-context" open={contextOpen}>
-        <summary
-          aria-controls={`${id}-context`}
-          onClick={(event) => {
-            event.preventDefault();
-            setContextOpen(!contextOpen);
-          }}
-        >
-          <ChevronRight size={15} className="flow-chevron" />
-          <ArrowUpRight size={16} />
-          <span>
-            <strong>Request context</strong>
-            <span className="flow-group-subtitle">
-              {[
-                `${messages} messages`,
-                contextCalls ? `${contextCalls} tool calls` : "",
-                outputs ? `${outputs} outputs` : "",
-                tools.length ? `${tools.length} available tools` : "",
-              ].filter(Boolean).join(" · ")}
-            </span>
-          </span>
-          <span className="badge badge-muted">Sent to model</span>
-        </summary>
-        <p className="flow-context-note">Input, not new model output: earlier conversation, the current prompt, and any tool results sent with this request.</p>
-        <div id={`${id}-context`}>
-          {contextOpen && (
-            <>
-              {!!tools.length && (
-                <details className="flow-tools" open={toolsOpen}>
-                  <summary onClick={(event) => {
-                    event.preventDefault();
-                    setToolsOpen(!toolsOpen);
-                  }}>
-                    <ChevronRight size={13} className="flow-chevron" />
-                    <Wrench size={14} />
-                    <span>
-                      <strong>Available tools</strong>
-                      <span className="flow-tools-preview">{tools.map((tool) => tool.name).join(" · ")}</span>
-                    </span>
-                    <span className="badge badge-muted">{tools.length}</span>
-                  </summary>
-                  {toolsOpen && (
-                    <ul>
-                      {tools.map((tool, index) => (
-                        <li key={`${tool.name}-${index}`}>
-                          <strong className="mono">{tool.name}</strong>
-                          <p>{tool.description || "No description captured."}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </details>
+      {!!flow.sections.length && (
+        <div className="flow-weight">
+          <div className="flow-weight-totals">
+            <span>
+              {flow.inputTokens != null ? (
+                <>
+                  <strong>
+                    {flow.estimated ? "~" : ""}
+                    {flow.inputTokens.toLocaleString()}
+                  </strong>{" "}
+                  {flow.estimated ? "estimated tokens sent" : "tokens sent to the model"}
+                  {!!flow.cacheRead && ` · ${flow.cacheRead.toLocaleString()} read from cache`}
+                </>
+              ) : (
+                "What this request is made of"
               )}
-              <ol className="flow-events">{context.map(renderStep)}</ol>
-            </>
+            </span>
+            {flow.outputTokens != null && (
+              <span>
+                <strong>{flow.outputTokens.toLocaleString()}</strong> tokens came back
+                {record.latencyMs != null ? ` in ${fmtMs(record.latencyMs)}` : ""}
+              </span>
+            )}
+          </div>
+          <div className="flow-weight-bar" aria-hidden="true">
+            {flow.sections.map((section) => (
+              <i key={section.id} data-section={section.id} style={{ flexGrow: section.chars }} />
+            ))}
+          </div>
+          <div className="flow-weight-key">
+            {flow.sections.map((section) => (
+              <button
+                type="button"
+                key={section.id}
+                data-section={section.id}
+                title="Share of the request by characters. Token counts per part are estimates."
+                onClick={() => reveal(section.target)}
+              >
+                <i />
+                <strong>{section.label}</strong>
+                {section.tokens != null && <span>~{approxTokens(section.tokens)} tok</span>}
+                <span>{section.share < 0.005 ? "<1" : Math.round(section.share * 100)}%</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <FilterBar
+        filters={FILTERS.map(([value, label]) => ({
+          value,
+          label,
+          count: items.filter((item) => matchesFilter(value, item)).length,
+        }))}
+        filter={filter}
+        onFilter={setFilter}
+        search={search}
+        onSearch={setSearch}
+        searchLabel="Find in this request"
+        searchRef={searchInput}
+        hint={KEY_HINT}
+      />
+
+      <div className="flow-split">
+        <div className="flow-list" onKeyDown={onKeyDown}>
+          {zones.map((zone) => {
+            const heading = (
+              <>
+                <i className="flow-zone-dot" />
+                <strong>{zone.title}</strong>
+                <span className="flow-zone-sub">{subtitle(zone)}</span>
+              </>
+            );
+            return (
+              <section key={zone.id} className="flow-zone" data-zone={zone.id} aria-label={zone.title}>
+                {zone.foldable ? (
+                  <button
+                    type="button"
+                    className="flow-zone-head"
+                    aria-expanded={zone.isOpen}
+                    onClick={() => setOpen((previous) => ({ ...previous, [zone.id]: !zone.isOpen }))}
+                  >
+                    <ChevronRight size={13} className="flow-chevron" aria-hidden="true" />
+                    {heading}
+                    {!searching && <span className="flow-zone-action">{zone.isOpen ? "Hide" : "Show"}</span>}
+                  </button>
+                ) : (
+                  <div className="flow-zone-head">{heading}</div>
+                )}
+                {zone.shown.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    domId={rowId(item)}
+                    query={query}
+                    selected={selected?.id === item.id}
+                    onSelect={select}
+                  />
+                ))}
+                {zone.id === "response" && !zone.all.length && (
+                  <p className="flow-zone-note">
+                    {flow.waiting
+                      ? "Waiting for the model response…"
+                      : "No parsed response steps. See Response or Raw for the captured payload."}
+                  </p>
+                )}
+                {zone.id === "response" && awaiting && !searching && (
+                  <p className="flow-zone-note">
+                    The model asked for tools. Their outputs arrive with the next request.
+                  </p>
+                )}
+              </section>
+            );
+          })}
+          {searching && !visible.length && (
+            <p className="flow-zone-note flow-no-match">
+              Nothing in this request matches.{" "}
+              <button
+                type="button"
+                className="flow-link"
+                onClick={() => {
+                  setFilter("all");
+                  setSearch("");
+                }}
+              >
+                Clear the filter
+              </button>
+            </p>
           )}
         </div>
-      </details>
-      <section className="flow-response" aria-label="New response">
-        <div className="flow-group-heading">
-          <ArrowDownLeft size={17} />
-          <div>
-            <h3 ref={responseHeading} tabIndex={-1}>New response</h3>
-            <p>Only what the model returned for this request.</p>
-          </div>
-          <span className="badge tag-orange">{response.length} {response.length === 1 ? "event" : "events"}</span>
-        </div>
-        <ol className="flow-events">{response.map(renderStep)}</ol>
-        {!response.length && (
-          <p className="flow-context-note">
-            {record.response
-              ? "No parsed response steps. See Response or Raw for the captured payload."
-              : "Waiting for the model response…"}
-          </p>
-        )}
-        {response.some(isCall) && (
-          <p className="flow-response-note">
-            <Info size={13} />
-            “Requested” means the model asked for a tool; its output usually arrives in a later request.
-          </p>
-        )}
-      </section>
+        <ItemPreview
+          item={selected}
+          where={selected ? WHERE[selected.zone][selected.kind === "tool" ? 1 : 0] : undefined}
+        />
+      </div>
     </div>
   );
 }
