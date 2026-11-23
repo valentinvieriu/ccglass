@@ -5,11 +5,40 @@
 import http from "node:http";
 import https from "node:https";
 
-export function createProxy({ upstream, store }) {
+export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS_CORS_ORIGINS || "" }) {
   const up = new URL(upstream);
   const client = up.protocol === "http:" ? http : https;
+  const allowedOrigins = new Set(corsOrigins.split(",").map((origin) => origin.trim()).filter(Boolean));
+  const corsEnabled = allowedOrigins.size > 0;
 
   return http.createServer((req, res) => {
+    const origin = req.headers.origin;
+    const corsOrigin = allowedOrigins.has("*") ? "*" : origin;
+    if (corsEnabled) {
+      res.setHeader("vary", "Origin");
+      if (origin && !allowedOrigins.has("*") && !allowedOrigins.has(origin)) {
+        req.resume();
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("ccglass: origin is not allowed");
+        return;
+      }
+      if (origin) {
+        res.setHeader("access-control-allow-origin", corsOrigin);
+        if (req.method === "OPTIONS" && req.headers["access-control-request-method"]) {
+          req.resume();
+          res.setHeader("vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+          res.setHeader("access-control-allow-methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS");
+          if (req.headers["access-control-request-headers"]) {
+            res.setHeader("access-control-allow-headers", req.headers["access-control-request-headers"]);
+          }
+          res.setHeader("access-control-max-age", "600");
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+      }
+    }
+
     const chunks = [];
     req.on("data", (c) => chunks.push(c));
     req.on("end", () => {
@@ -66,7 +95,15 @@ export function createProxy({ upstream, store }) {
             return;
           }
           proxyRes.on("error", fail);
-          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          const responseHeaders = { ...proxyRes.headers };
+          if (corsEnabled) {
+            responseHeaders.vary = [...new Set([
+              ...(proxyRes.headers.vary || "").split(",").map((value) => value.trim()).filter(Boolean),
+              "Origin",
+            ])].join(", ");
+            if (origin) responseHeaders["access-control-allow-origin"] = corsOrigin;
+          }
+          res.writeHead(proxyRes.statusCode, responseHeaders);
           const respChunks = [];
           let firstByteAt;
           proxyRes.on("data", (c) => {

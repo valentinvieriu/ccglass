@@ -7,6 +7,12 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
 - `CCGLASS_BIND_HOST` overrides the proxy and dashboard bind address. It defaults
   to `127.0.0.1`; Docker sets it to `0.0.0.0` and publishes only on host loopback.
 - The dashboard rejects non-loopback `Host` headers with HTTP 403.
+- `CCGLASS_CORS_ORIGINS` enables reverse-proxy CORS for a comma-separated list
+  of exact origins (for example, `http://localhost:5173`), or `*` for any origin
+  (like `OLLAMA_ORIGINS="*"`). Preflight requests are answered locally without
+  capturing them, and actual responses include the allowed origin (or `*`).
+  An explicit list rejects other origins with HTTP 403; requests without an
+  Origin header still work. Unset or empty leaves upstream CORS unchanged.
 - Captured request `authorization` and `x-api-key` headers are fully replaced
   with `[REDACTED]` unless `--no-redact` is explicitly selected. Forwarded
   authentication is unchanged; other headers, bodies, and URLs are not redacted.

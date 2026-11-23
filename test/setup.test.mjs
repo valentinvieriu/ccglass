@@ -36,19 +36,28 @@ test('forwarding preserves path, query, auth, body, status and streaming', async
     const body = [];
     for await (const chunk of req) body.push(chunk);
     assert.equal(Buffer.concat(body).toString(), '{"model":"setup-test"}');
-    res.writeHead(201, { 'content-type': 'text/event-stream', 'x-setup': 'ok' });
+    res.writeHead(201, {
+      'content-type': 'text/event-stream', 'x-setup': 'ok',
+      'access-control-allow-origin': 'https://upstream.example', vary: 'Accept-Encoding',
+    });
     res.write('data: first\n\n');
     setTimeout(() => res.end('data: [DONE]\n\n'), 100);
   }));
-  const proxy = await listen(t, createProxy({ upstream, store: captures }));
+  const proxy = await listen(t, createProxy({
+    upstream, store: captures, corsOrigins: 'http://localhost:5173',
+  }));
   const updated = once(captures, 'update');
   const response = await fetch(`${proxy}/openai/v1/responses?trace=setup`, {
     method: 'POST',
-    headers: { authorization: 'Bearer short', 'x-api-key': 'plain-secret' },
+    headers: {
+      authorization: 'Bearer short', 'x-api-key': 'plain-secret', origin: 'http://localhost:5173',
+    },
     body: '{"model":"setup-test"}',
   });
   assert.equal(response.status, 201);
   assert.equal(response.headers.get('x-setup'), 'ok');
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.equal(response.headers.get('vary'), 'Accept-Encoding, Origin');
   const reader = response.body.getReader();
   assert.equal(new TextDecoder().decode((await reader.read()).value), 'data: first\n\n');
   let remaining = '';
@@ -63,6 +72,134 @@ test('forwarding preserves path, query, auth, body, status and streaming', async
   assert.equal(rec.request.headers.authorization, '[REDACTED]');
   assert.equal(rec.request.headers['x-api-key'], '[REDACTED]');
   assert.equal(captures.get(rec.id).response.status, 201);
+});
+
+test('CORS preflights allow configured origins and auth headers without forwarding or capturing', async (t) => {
+  const captures = store(t);
+  let upstreamRequests = 0;
+  const upstream = await listen(t, http.createServer((req, res) => {
+    upstreamRequests++;
+    res.writeHead(401);
+    res.end();
+  }));
+  const proxy = await listen(t, createProxy({
+    upstream, store: captures, corsOrigins: ' http://localhost:5173, http://127.0.0.1:5173 ',
+  }));
+  for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+    for (const method of ['GET', 'POST']) {
+      const response = await fetch(`${proxy}/openai/v1/models`, {
+        method: 'OPTIONS',
+        headers: {
+          origin, 'access-control-request-method': method,
+          'access-control-request-headers': 'authorization, content-type, x-api-key',
+        },
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), origin);
+      assert.ok(response.headers.get('access-control-allow-methods').split(', ').includes(method));
+      assert.equal(response.headers.get('access-control-allow-headers'), 'authorization, content-type, x-api-key');
+      assert.equal(await response.text(), '');
+    }
+  }
+  assert.equal(upstreamRequests, 0);
+  assert.equal(captures.entries.length, 0);
+});
+
+test('CORS rejects other origins and preserves model responses for browsers and CLI clients', async (t) => {
+  const captures = store(t);
+  let upstreamRequests = 0;
+  const upstream = await listen(t, http.createServer((req, res) => {
+    upstreamRequests++;
+    assert.equal(req.url, '/openai/v1/models');
+    assert.equal(req.headers.authorization, 'Bearer short');
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    res.end('{"data":[]}');
+  }));
+  const proxy = await listen(t, createProxy({
+    upstream, store: captures, corsOrigins: 'http://localhost:5173',
+  }));
+  for (const method of ['OPTIONS', 'GET']) {
+    const response = await fetch(`${proxy}/openai/v1/models`, {
+      method, headers: { origin: 'https://other.example', 'access-control-request-method': 'GET' },
+    });
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    await response.text();
+  }
+  assert.equal(upstreamRequests, 0);
+  assert.equal(captures.entries.length, 0);
+  for (const origin of ['http://localhost:5173', undefined]) {
+    const updated = once(captures, 'update');
+    const response = await fetch(`${proxy}/openai/v1/models`, {
+      headers: { authorization: 'Bearer short', ...(origin ? { origin } : {}) },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), origin || '*');
+    assert.equal(await response.text(), '{"data":[]}');
+    await updated;
+  }
+  assert.equal(upstreamRequests, 2);
+});
+
+test('wildcard environment setting permits any origin on preflights and upstream errors', async (t) => {
+  const captures = store(t);
+  const upstream = await listen(t, http.createServer((req, res) => {
+    assert.equal(req.method, 'GET');
+    assert.equal(req.headers.authorization, 'Bearer short');
+    res.writeHead(401, { 'access-control-allow-origin': 'https://upstream.example' });
+    res.end('invalid API key');
+  }));
+  const previousOrigins = process.env.CCGLASS_CORS_ORIGINS;
+  let server;
+  try {
+    process.env.CCGLASS_CORS_ORIGINS = '*';
+    server = createProxy({ upstream, store: captures });
+  } finally {
+    if (previousOrigins === undefined) delete process.env.CCGLASS_CORS_ORIGINS;
+    else process.env.CCGLASS_CORS_ORIGINS = previousOrigins;
+  }
+  const proxy = await listen(t, server);
+  for (const origin of ['http://localhost:5173', 'https://another.example']) {
+    const capturedBefore = captures.entries.length;
+    const preflight = await fetch(`${proxy}/openai/v1/models`, {
+      method: 'OPTIONS', headers: {
+        origin, 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization',
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
+    assert.equal(preflight.headers.get('access-control-allow-headers'), 'authorization');
+    assert.equal(captures.entries.length, capturedBefore);
+    const updated = once(captures, 'update');
+    const response = await fetch(`${proxy}/openai/v1/models`, {
+      headers: { origin, authorization: 'Bearer short' },
+    });
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    assert.equal(await response.text(), 'invalid API key');
+    await updated;
+  }
+});
+
+test('disabled CORS passes preflights and upstream CORS headers through', async (t) => {
+  const captures = store(t);
+  const upstream = await listen(t, http.createServer((req, res) => {
+    assert.equal(req.method, 'OPTIONS');
+    assert.equal(req.headers.origin, 'https://other.example');
+    res.writeHead(401, { 'access-control-allow-origin': 'https://other.example', vary: 'Origin' });
+    res.end('upstream auth required');
+  }));
+  const proxy = await listen(t, createProxy({ upstream, store: captures, corsOrigins: '' }));
+  const updated = once(captures, 'update');
+  const response = await fetch(`${proxy}/openai/v1/models`, {
+    method: 'OPTIONS', headers: { origin: 'https://other.example', 'access-control-request-method': 'GET' },
+  });
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://other.example');
+  assert.equal(response.headers.get('vary'), 'Origin');
+  assert.equal(await response.text(), 'upstream auth required');
+  await updated;
+  assert.equal(captures.entries.length, 1);
 });
 
 test('redacts short, Basic and arbitrary API keys in persisted captures', (t) => {
@@ -129,10 +266,13 @@ test('connection errors return 502 and remain inspectable', { timeout: 5000 }, a
   await once(unavailable, 'listening');
   const port = unavailable.address().port;
   await new Promise((resolve) => unavailable.close(resolve));
-  const proxy = await listen(t, createProxy({ upstream: `http://127.0.0.1:${port}`, store: captures }));
+  const proxy = await listen(t, createProxy({
+    upstream: `http://127.0.0.1:${port}`, store: captures, corsOrigins: 'http://localhost:5173',
+  }));
   const updated = once(captures, 'update');
-  const response = await fetch(proxy);
+  const response = await fetch(proxy, { headers: { origin: 'http://localhost:5173' } });
   assert.equal(response.status, 502);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
   assert.match(await response.text(), /ccglass: upstream error:/);
   assert.match((await updated)[0].response.error, /ECONNREFUSED/);
 });
