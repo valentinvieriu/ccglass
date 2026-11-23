@@ -41,6 +41,8 @@ export interface FlowItem {
   human?: string;
   callId?: string;
   callNumber?: number;
+  /** Name of the called tool as it is written in the request, e.g. "Skill". */
+  tool?: string;
   status?: FlowStatus;
   output?: string;
   description?: string;
@@ -104,6 +106,7 @@ export function stepItem(
       ...base,
       kind: "tool",
       name: step.kind === "skill" ? `/${step.name || "skill"}` : step.name || "Unnamed tool",
+      tool: step.kind === "skill" ? "Skill" : step.name,
       summary: empty ? "No arguments" : smartSummary(step) || "No arguments",
       chars: step.text.length + (result?.text.length ?? 0),
       status: result ? (result.isError ? "error" : "ok") : pendingStatus,
@@ -179,7 +182,7 @@ export function stepItem(
  * the agent appended after it. Each request re-sends the whole history, so
  * this tail is the only part the model has not already answered.
  */
-function newStart(steps: TimelineStep[]) {
+export function newStart(steps: TimelineStep[]) {
   let index = steps.length;
   while (index > 0 && !modelSide(steps[index - 1])) index--;
   if (index === 0) return 0;

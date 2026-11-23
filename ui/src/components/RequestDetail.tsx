@@ -8,14 +8,15 @@ import {
   FileText,
   Gauge,
   List,
-  Wrench,
 } from "lucide-react";
 import type { RequestRecord } from "../types";
-import { callColor, fmt, fmtMs, fmtTps } from "../lib/format";
+import { fmt, fmtMs, fmtTps } from "../lib/format";
 import { buildCurl } from "../lib/curl";
-import { toolCategory } from "../lib/timeline";
-import { ContentBlock, CopyButton, TextContent } from "./JsonView";
+import { countMessages } from "../lib/messages";
+import { ContentBlock, CopyButton } from "./JsonView";
 import FlowView from "./FlowView";
+import MessagesView from "./MessagesView";
+import ToolsView from "./ToolsView";
 
 const tabs = [
   "overview",
@@ -229,74 +230,6 @@ function Overview({ record }: { record: RequestRecord }) {
   );
 }
 
-function MessagesView({ record }: { record: RequestRecord }) {
-  const messages = record.parsed?.view?.messages ?? [];
-  if (!messages.length) return <EmptyContent>No messages were sent.</EmptyContent>;
-  return (
-    <>
-      {messages.map((message, index) => {
-        const paired = message.type === "tool_use" || message.type === "tool_result";
-        return (
-          <ContentBlock
-            key={`${message.callId || message.label}-${index}`}
-            title={message.label || `Message ${index + 1}`}
-            value={message.text ?? message.thinking ?? message.input ?? message}
-            className={message.isError ? "border-danger-border!" : ""}
-            style={
-              paired && message.callId ? { borderColor: callColor(message.callId) } : undefined
-            }
-            tags={
-              <>
-                <Badge>{message.role || "message"}</Badge>
-                {message.type === "tool_use" && (
-                  <Badge tone="accent">{message.name || "tool call"}</Badge>
-                )}
-                {message.type === "tool_result" && (
-                  <Badge tone={message.isError ? "danger" : "success"}>
-                    {message.isError ? "error" : "result"}
-                  </Badge>
-                )}
-                {message.type &&
-                  !["text", "message", "tool_use", "tool_result"].includes(message.type) && (
-                    <Badge>{message.type}</Badge>
-                  )}
-                {message.callId && <Badge title={message.callId}>{message.callId.slice(-8)}</Badge>}
-                {message.cache && <Badge tone="cache">cached</Badge>}
-              </>
-            }
-          />
-        );
-      })}
-    </>
-  );
-}
-
-function ToolsView({ record }: { record: RequestRecord }) {
-  const tools = record.parsed?.view?.tools ?? [];
-  if (!tools.length) return <EmptyContent>No tools were offered to the model.</EmptyContent>;
-  return (
-    <>
-      {tools.map((tool, index) => {
-        const category = toolCategory(tool.name);
-        return (
-          <section key={`${tool.name}-${index}`} className="mb-6">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <Wrench size={17} />
-              <h3 className="section-title">{tool.name}</h3>
-              {category && <Badge>{category}</Badge>}
-            </div>
-            <ContentBlock
-              title="Description"
-              value={tool.description || "No description provided."}
-            />
-            <ContentBlock title="Input schema" value={tool.schema ?? {}} />
-          </section>
-        );
-      })}
-    </>
-  );
-}
-
 function ResponseView({ record }: { record: RequestRecord }) {
   const response = record.parsed?.response;
   const error = responseError(record);
@@ -372,6 +305,19 @@ export default function RequestDetail({
     setLocalTab(next);
     onTabChange?.(next);
   };
+  // A cross-tab jump: a call in Messages opens its definition in Tools, and back.
+  const [jump, setJump] = useState<{ record: string; tab: Tab; target: string; nonce: number }>();
+  const open = (next: Tab, target: string) => {
+    setJump((previous) => ({
+      record: record.id,
+      tab: next,
+      target,
+      nonce: (previous?.nonce ?? 0) + 1,
+    }));
+    setTab(next);
+  };
+  const focusFor = (name: Tab) =>
+    jump && jump.record === record.id && jump.tab === name ? jump : undefined;
   const id = useId();
   const view = record.parsed?.view;
   const response = record.parsed?.response;
@@ -384,7 +330,8 @@ export default function RequestDetail({
     "Request inspector";
   const counts: Partial<Record<Tab, number>> = {
     system: view?.system?.length,
-    messages: view?.messages?.length,
+    // Entries of the message array, the same unit the request list counts.
+    messages: view?.messages ? countMessages(view.messages) : undefined,
     tools: view?.tools?.length,
   };
   return (
@@ -520,8 +467,23 @@ export default function RequestDetail({
           ) : (
             <EmptyContent>No system blocks were sent.</EmptyContent>
           ))}
-        {tab === "messages" && <MessagesView record={record} />}
-        {tab === "tools" && <ToolsView record={record} />}
+        {tab === "messages" && (
+          <MessagesView
+            record={record}
+            focus={focusFor("messages")}
+            onOpenTool={view?.tools?.length ? (name) => open("tools", name) : undefined}
+            onOpenResponse={() => setTab("response")}
+          />
+        )}
+        {tab === "tools" && (
+          <ToolsView
+            record={record}
+            focus={focusFor("tools")}
+            onOpenCall={(item) =>
+              item.zone === "response" ? setTab("response") : open("messages", item.id)
+            }
+          />
+        )}
         {tab === "response" && <ResponseView record={record} />}
         {tab === "headers" && (
           <>

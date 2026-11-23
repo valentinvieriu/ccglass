@@ -65,16 +65,24 @@ function Tile({ item, large = false }: { item: FlowItem; large?: boolean }) {
   );
 }
 
-function Highlight({ text, query }: { text: string; query: string }) {
-  const at = query ? text.toLowerCase().indexOf(query) : -1;
-  if (at < 0) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, at)}
-      <mark>{text.slice(at, at + query.length)}</mark>
-      {text.slice(at + query.length)}
-    </>
-  );
+/** Marks every occurrence of the (lower-cased) query in a text. */
+export function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const parts: ReactNode[] = [];
+  let position = 0;
+  for (
+    let at = lower.indexOf(query);
+    at >= 0 && parts.length < 600;
+    at = lower.indexOf(query, position)
+  ) {
+    if (at > position) parts.push(text.slice(position, at));
+    parts.push(<mark key={at}>{text.slice(at, at + query.length)}</mark>);
+    position = at + query.length;
+  }
+  if (!parts.length) return <>{text}</>;
+  parts.push(text.slice(position));
+  return <>{parts}</>;
 }
 
 export const ItemRow = memo(function ItemRow({
@@ -143,8 +151,8 @@ export const KEY_HINT = (
   </>
 );
 
-/** Filter chips with counts plus a text search, shared by Flow and Session replay. */
-export function FilterBar({
+/** Filter chips with counts plus a text search, shared by every list in the inspector. */
+export function FilterBar<T extends string = FlowFilter>({
   filters,
   filter,
   onFilter,
@@ -153,15 +161,18 @@ export function FilterBar({
   searchLabel,
   searchRef,
   hint,
+  actions,
 }: {
-  filters: { value: FlowFilter; label: string; count: number }[];
-  filter: FlowFilter;
-  onFilter: (value: FlowFilter) => void;
+  filters: { value: T; label: string; count: number }[];
+  filter: T;
+  onFilter: (value: T) => void;
   search: string;
   onSearch: (value: string) => void;
   searchLabel: string;
   searchRef?: Ref<HTMLInputElement>;
   hint?: ReactNode;
+  /** Controls specific to one view, e.g. a sort order. */
+  actions?: ReactNode;
 }) {
   return (
     <div className="flow-toolbar">
@@ -182,6 +193,7 @@ export function FilterBar({
       </div>
       <div className="flow-tools">
         {hint && <span className="flow-keys">{hint}</span>}
+        {actions}
         <label className="flow-search">
           <Search size={13} aria-hidden="true" />
           <input

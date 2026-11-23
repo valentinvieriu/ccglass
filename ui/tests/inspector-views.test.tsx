@@ -93,8 +93,11 @@ describe("request inspector", () => {
     expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /^tools/i }));
-    expect(screen.getByText("Read a local file")).toBeInTheDocument();
-    expect(screen.getByText(/"path"/)).toBeInTheDocument();
+    const definition = screen.getByRole("complementary", { name: "Tool definition" });
+    expect(within(definition).getByText("Read a local file")).toBeInTheDocument();
+    expect(within(definition).getByText("path")).toBeInTheDocument();
+    fireEvent.click(within(definition).getByRole("button", { name: /Input schema as sent/ }));
+    expect(within(definition).getByText(/"path"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /^headers/i }));
     expect(
       within(
