@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import TimelineView, { type TimelineViewProps } from "../src/components/TimelineView";
 import type { EntrySummary, RequestRecord } from "../src/types";
@@ -52,6 +52,7 @@ describe("conversation timeline", () => {
     const { container, rerender } = render(<TimelineView {...initial} />);
     expect(screen.queryByText("Hidden Codex prompt")).not.toBeInTheDocument();
     expect(screen.getByText("pending…")).toBeInTheDocument();
+    expect(screen.getByText("Response #1")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Expand Bash content"));
     const toolRow = container.querySelector('[data-kind="tool_use"]');
     const second = record(2, "gpt-codex");
@@ -71,6 +72,10 @@ describe("conversation timeline", () => {
       />,
     );
     expect(container.querySelector('[data-kind="tool_use"]')).toBe(toolRow);
+    expect(within(toolRow as HTMLElement).getByText("Response #1")).toBeInTheDocument();
+    expect(within(toolRow as HTMLElement).getByText("Request #2 · tool output")).toBeInTheDocument();
+    expect(toolRow?.querySelector(".timeline-marker")).toHaveClass("error");
+    expect(toolRow?.querySelector(".timeline-marker")).not.toHaveAttribute("style");
     expect(container.querySelector('[data-kind="tool_result"]')).toBeNull();
     expect(screen.queryByText("pending…")).not.toBeInTheDocument();
     expect(screen.getByText("error")).toBeInTheDocument();
@@ -79,6 +84,56 @@ describe("conversation timeline", () => {
     expect(screen.queryByText(/"command"/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Show input"));
     expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent('"command": "printf hello"');
+  });
+
+  it("labels HTTP direction independently of message role and the newest turn", () => {
+    const first = record(1);
+    first.parsed!.view!.messages = [
+      { role: "assistant", type: "text", text: "Earlier assistant context" },
+      { role: "user", type: "text", text: "Current user prompt" },
+    ];
+    const second = record(2);
+    second.parsed!.view!.messages = [...first.parsed!.view!.messages];
+    const { container } = render(<TimelineView {...props({
+      entries: [entry(1), entry(2)],
+      records: { [first.id]: first, [second.id]: second },
+      isLive: false,
+    })} />);
+    const requestRows = container.querySelectorAll('.timeline-row[data-source="request"]');
+    expect(requestRows).toHaveLength(2);
+    for (const row of requestRows) {
+      expect(within(row as HTMLElement).getByText("Request #1")).toBeInTheDocument();
+      expect(row.querySelector(".timeline-marker")).toHaveClass("request");
+    }
+    expect(requestRows[0]).toHaveAttribute("data-kind", "assistant");
+    expect(screen.getByText("Response #1")).toBeInTheDocument();
+    expect(screen.getByText("Response #2")).toBeInTheDocument();
+    expect(container.querySelectorAll(".timeline-marker.response")).toHaveLength(2);
+    expect(container.querySelector(".timeline-marker.error")).toBeNull();
+    expect(screen.getByLabelText("Request and response key")).toBeInTheDocument();
+  });
+
+  it("keeps standalone tool outputs labeled as request input and previews paired outputs while collapsed", () => {
+    const first = record(1, "gpt-codex");
+    first.parsed!.response!.content = [
+      { type: "tool_use", id: "paired", name: "Bash", input: { command: "pwd" } },
+    ];
+    const second = record(2, "gpt-codex");
+    second.parsed!.view!.messages = [
+      { type: "tool_result", callId: "paired", text: "Working directory: /project" },
+      { type: "tool_result", callId: "unknown", text: "Unmatched output" },
+    ];
+    const { container } = render(<TimelineView {...props({
+      entries: [entry(1, "gpt-codex"), entry(2, "gpt-codex")],
+      records: { [first.id]: first, [second.id]: second },
+    })} />);
+    const orphan = container.querySelector('[data-kind="tool_result"]')!;
+    expect(orphan).toHaveAttribute("data-source", "request");
+    expect(within(orphan as HTMLElement).getByText("Request #2")).toBeInTheDocument();
+    expect(screen.getByText("Working directory: /project")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Expand Bash content"));
+    expect(screen.getByText("Working directory: /project")).toBeInTheDocument();
+    expect(container.querySelector(".timeline-output-preview")).toBeNull();
   });
 
   it("renders large payloads lazily and preserves disclosure state through unrelated updates", () => {

@@ -1,6 +1,7 @@
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  ArrowDownLeft,
   ArrowUpRight,
   Brain,
   ChevronRight,
@@ -13,7 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { EntrySummary, RequestRecord, TimelineRow } from "../types";
-import { callColor, fmtCost, fmtMs } from "../lib/format";
+import { fmtCost, fmtMs } from "../lib/format";
 import { buildTimeline, detectPatterns, smartSummary, TAG_INFO } from "../lib/timeline";
 import { CodeView } from "./JsonView";
 
@@ -32,6 +33,23 @@ const eventKey = (row: TimelineRow) => row.key;
 const isTool = (row: TimelineRow) => row.kind === "tool_use" || row.kind === "skill";
 const initiallyOpen = (row: TimelineRow) =>
   (row.kind === "user" || row.kind === "assistant") && row.text.length <= 800;
+
+function SourceBadge({ response = false, seq, output = false }: {
+  response?: boolean;
+  seq?: number;
+  output?: boolean;
+}) {
+  const Icon = response ? ArrowDownLeft : ArrowUpRight;
+  return (
+    <span
+      className={`timeline-source ${response ? "timeline-source-response" : "timeline-source-request"}`}
+      title={response ? "Returned by the model in this HTTP response" : "Sent to the model in this HTTP request"}
+    >
+      <Icon size={11} aria-hidden="true" />
+      {response ? "Response" : "Request"}{seq != null ? ` #${seq}` : ""}{output ? " · tool output" : ""}
+    </span>
+  );
+}
 
 function Tag({
   name,
@@ -75,6 +93,7 @@ function sameRow(a: TimelineRow, b: TimelineRow) {
   return (
     a.key === b.key &&
     a.entryId === b.entryId &&
+    a.seq === b.seq &&
     a.kind === b.kind &&
     a.text === b.text &&
     a.name === b.name &&
@@ -85,6 +104,8 @@ function sameRow(a: TimelineRow, b: TimelineRow) {
     a.count === b.count &&
     a.result?.text === b.result?.text &&
     a.result?.isError === b.result?.isError &&
+    a.result?.entryId === b.result?.entryId &&
+    a.result?.seq === b.result?.seq &&
     !!a.result === !!b.result
   );
 }
@@ -134,18 +155,23 @@ const TimelineEvent = memo(
                 : row.kind[0].toUpperCase() + row.kind.slice(1);
     const summary = smartSummary(row);
     const hasBody = row.kind !== "stop" && (!!row.text || !!row.result || !!row.tools?.length);
-    const pairedStyle = row.callId ? { borderColor: callColor(row.callId) } : undefined;
     return (
-      <div className="timeline-row" data-event-key={eventKey(row)} data-kind={row.kind}>
+      <div
+        className="timeline-row"
+        data-event-key={eventKey(row)}
+        data-kind={row.kind}
+        data-source={row.latest ? "response" : "request"}
+      >
         <span
-          className={`timeline-marker ${error ? "error" : tool || row.kind === "tool_result" ? "tool" : row.kind === "assistant" ? "assistant" : row.kind === "user" ? "user" : ""}`}
-          style={pairedStyle}
+          className={`timeline-marker ${error ? "error" : row.latest ? "response" : "request"}`}
+          title={error ? "Error" : row.latest ? "Model response" : "Request input"}
         >
           <Icon size={13} aria-hidden="true" />
         </span>
         <div className="timeline-content">
           <div className="timeline-heading">
             <strong>{title}</strong>
+            <SourceBadge response={!!row.latest} seq={row.seq} />
             {row.kind === "tools" && <span>{row.count} available</span>}
           </div>
           <div className="timeline-tags">
@@ -174,6 +200,12 @@ const TimelineEvent = memo(
             )}
           </div>
           {summary && <p className={`timeline-summary ${error ? "text-danger" : ""}`}>{summary}</p>}
+          {row.result && (
+            <div className="timeline-result-summary">
+              <SourceBadge seq={row.result.seq} output />
+              {!open && <p className="timeline-output-preview">{smartSummary(row.result)}</p>}
+            </div>
+          )}
           {hasBody && (
             <details className="timeline-fold" open={open}>
               <summary
@@ -341,8 +373,14 @@ export default function TimelineView({
         </button>
       </div>
       <div className="border-b border-border px-5 py-2 text-[11px] text-muted">
+        <div className="timeline-source-key" aria-label="Request and response key">
+          <span><SourceBadge /> Sent to model</span>
+          <span><SourceBadge response /> Returned by model</span>
+          <span>Red = error</span>
+        </div>
         {isLive ? "Turns append as requests arrive." : "Saved session replay."} Click a turn or a
         request on the left to inspect the full HTTP call.
+        <p className="mt-1">Tool output is sent back in a later request. Repeated context is shown once.</p>
         {entries.length >= limit && (
           <p className="mt-1">
             Showing up to {limit.toLocaleString()} requests per page. Session exports include every

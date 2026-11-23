@@ -7,16 +7,21 @@ export function buildTimeline(records: RequestRecord[]): TimelineRow[] {
   const rows: TimelineRow[] = [];
   const seen = new Set<string>();
   const toolRows = new Map<string, TimelineRow>();
-  const orphanResults = new Map<string, TimelineStep>();
+  const orphanResults = new Map<string, NonNullable<TimelineRow["result"]>>();
   for (const record of [...records].sort((a, b) => (a.seq || 0) - (b.seq || 0))) {
     for (const step of liveFlowSteps(record)) {
       if (step.kind === "tool_result" && step.callId) {
         const tool = toolRows.get(step.callId);
+        const previous = tool?.result ?? orphanResults.get(step.callId);
+        // Re-sent history must not move an unchanged output to a later request.
+        const result = previous && previous.text === step.text && previous.isError === step.isError
+          ? previous
+          : { ...step, entryId: record.id, seq: record.seq };
         if (tool) {
-          tool.result = step;
+          tool.result = result;
           continue;
         }
-        orphanResults.set(step.callId, step);
+        orphanResults.set(step.callId, result);
       }
       const key = liveStepKey(step);
       if (seen.has(key)) continue;

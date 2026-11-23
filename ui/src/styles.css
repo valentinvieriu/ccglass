@@ -2049,6 +2049,70 @@ svg {
   background: linear-gradient(270deg, transparent, var(--color-accent-border));
 }
 
+.timeline-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.timeline-source-request,
+.timeline-heading .timeline-source-request {
+  color: var(--color-muted);
+  background: var(--color-surface-muted);
+}
+.timeline-source-response,
+.timeline-heading .timeline-source-response {
+  color: var(--color-accent-ink);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-border);
+}
+.timeline-heading {
+  flex-wrap: wrap;
+}
+.timeline-marker.request {
+  color: var(--color-muted);
+  background: var(--color-surface-muted);
+  border-color: var(--color-control-border);
+  box-shadow: none;
+}
+.timeline-marker.response {
+  color: var(--color-accent-ink);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-border);
+  box-shadow: none;
+}
+.timeline-source-key,
+.timeline-source-key > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.timeline-source-key {
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 8px;
+}
+.timeline-result-summary {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--glass-soft);
+}
+.timeline-output-preview {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
 /* Request flow: source and tool status are independent, labeled signals. */
 .flow-view {
   --flow-context: var(--color-muted);

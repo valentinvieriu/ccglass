@@ -44,7 +44,11 @@ describe("timeline normalization", () => {
       text: "file-a file-b",
     });
     const rows = buildTimeline([next, first]);
-    expect(rows.find((row) => row.callId === "call_1")?.result?.text).toBe("file-a file-b");
+    expect(rows.find((row) => row.callId === "call_1")?.result).toMatchObject({
+      text: "file-a file-b",
+      entryId: "session/2",
+      seq: 2,
+    });
     expect(rows.filter((row) => row.callId === "call_1")).toHaveLength(1);
     expect(rows.some((row) => row.text.includes("private"))).toBe(false);
     expect(rows.some((row) => row.text === "done")).toBe(true);
@@ -86,6 +90,22 @@ describe("timeline normalization", () => {
     const complete = buildTimeline([item, next]);
     expect(complete).toHaveLength(1);
     expect(complete[0].result?.text).toBe("/workspace");
+  });
+  it("retains the first request that carried an output when later requests resend the same history", () => {
+    const first = record("1", [
+      { type: "tool_use", name: "shell", id: "call_1", input: { command: "pwd" } },
+    ]);
+    const second = record("2");
+    const third = record("3");
+    second.parsed!.view!.messages = [{ type: "tool_result", callId: "call_1", text: "/workspace" }];
+    third.parsed!.view!.messages = [...second.parsed!.view!.messages];
+    expect(buildTimeline([first, second, third])[0].result).toMatchObject({
+      text: "/workspace", entryId: "session/2", seq: 2,
+    });
+    third.parsed!.view!.messages = [{ type: "tool_result", callId: "call_1", text: "Updated output" }];
+    expect(buildTimeline([first, second, third])[0].result).toMatchObject({
+      text: "Updated output", entryId: "session/3", seq: 3,
+    });
   });
   it("deduplicates repeated context but keeps blocks changed beyond their prefix", () => {
     const a: TimelineStep = { kind: "user", text: "x".repeat(250) };

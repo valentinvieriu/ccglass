@@ -192,5 +192,5 @@ export interface TimelineRow extends TimelineStep {
   model?: string;
   status?: number;
   latencyMs?: number | null;
-  result?: TimelineStep;
+  result?: TimelineStep & { entryId?: string; seq?: number };
 }
