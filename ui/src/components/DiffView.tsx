@@ -165,7 +165,6 @@ export default function DiffView({
     >
       <div className="detail-header">
         <div>
-          <span className="eyebrow">CONTEXT CHANGES</span>
           <h2 className="flex items-center gap-2">
             <GitCompareArrows size={22} />
             Compare requests

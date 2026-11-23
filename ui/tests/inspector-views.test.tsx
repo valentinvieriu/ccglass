@@ -255,8 +255,93 @@ describe("request inspector", () => {
     expect(responseJson).toContain('"command": "ls"');
     expect(responseJson).toContain('"payload": "opaque value"');
     fireEvent.click(screen.getByRole("tab", { name: "flow" }));
-    expect(screen.getByText("tool_use", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("tool_use")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Expand reasoning Thinking content"));
     expect(screen.getByText("New thought", { selector: "pre" })).toBeInTheDocument();
+  });
+
+  it("separates sent context from new response and keeps useful tool previews visible when collapsed", () => {
+    const { container } = render(<RequestDetail record={record} activeTab="flow" />);
+    const response = screen.getByRole("region", { name: "New response" });
+    expect(within(response).getByText("ok")).toBeInTheDocument();
+    expect(within(response).queryByText("<img src=x onerror=alert(1)>")).not.toBeInTheDocument();
+    expect(container.querySelector("pre")).toBeNull();
+    fireEvent.click(screen.getByText("Request context"));
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
+    expect(screen.getByText("Unmatched tool result")).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.queryByText("Read a local file")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Available tools"));
+    expect(screen.getByText("Read a local file")).toBeInTheDocument();
+  });
+
+  it("identifies call and output by tool name, links matching calls, and copies the full lazily mounted payload", async () => {
+    const output = '{"text":"' + "complete output ".repeat(100) + '"}';
+    const captured = {
+      ...record,
+      parsed: {
+        ...record.parsed,
+        view: {
+          ...record.parsed!.view!,
+          messages: [
+            { type: "tool_use", name: "read_item", callId: "matched-call", text: '{"id":"evidence-2"}' },
+            { type: "tool_result", callId: "matched-call", text: output },
+          ],
+        },
+        response: { content: [{ type: "tool_use", name: "raise_point", id: "new-call", input: { section: "evidence.saw", text: "Question the wait time" } }], stop_reason: "tool_use" },
+      },
+    };
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const scrollIntoView = vi.fn();
+    const originalScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const { container, rerender } = render(<RequestDetail record={captured} activeTab="flow" />);
+      expect(screen.getByText("section: evidence.saw · text: Question the wait time")).toBeInTheDocument();
+      expect(screen.getByText("Requested")).toBeInTheDocument();
+      fireEvent.click(screen.getByText("Request context"));
+      expect(screen.getAllByText("read_item", { selector: "strong" })).toHaveLength(2);
+      expect(screen.getAllByText("Call 1 · hed-call")).toHaveLength(2);
+      expect(screen.getByText("id: evidence-2", { selector: ".flow-preview" })).toBeInTheDocument();
+      expect(container.querySelector("pre")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "View call" }));
+      await waitFor(() => expect(screen.getByLabelText("Expand tool call read_item content")).toHaveFocus());
+      expect(scrollIntoView).toHaveBeenCalled();
+      fireEvent.click(screen.getByLabelText("Expand tool output read_item content"));
+      expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent("complete output");
+      fireEvent.click(screen.getByRole("button", { name: "Copy tool output read_item" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(output));
+      rerender(<RequestDetail record={{ ...captured }} activeTab="flow" />);
+      expect(screen.getByLabelText("Collapse tool output read_item content")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+      expect(container.querySelector("pre")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+      expect(screen.getAllByLabelText("Formatted JSON").length).toBeGreaterThan(1);
+      rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="flow" />);
+      expect(container.querySelector("pre")).toBeNull();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScroll;
+    }
+  });
+
+  it("keeps failures and terminal events in the new response and does not imply unmatched tools are running", () => {
+    const pending: RequestRecord = {
+      id: "pending",
+      parsed: { view: { system: [], tools: [], messages: [{ type: "tool_use", name: "shell", callId: "earlier", text: '{"command":"pwd"}' }] } },
+      response: null,
+    };
+    const { rerender } = render(<RequestDetail record={pending} activeTab="flow" />);
+    expect(screen.getByText("No result captured")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for the model response…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jump to new" })).toBeDisabled();
+    rerender(<RequestDetail record={{ ...pending, id: "failed", response: { status: 502, error: "upstream disconnected" } }} activeTab="flow" />);
+    const response = screen.getByRole("region", { name: "New response" });
+    expect(within(response).getByText("Request failed")).toBeInTheDocument();
+    expect(within(response).getByText("error 502: upstream disconnected")).toBeInTheDocument();
+    expect(within(response).getByText("Error")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jump to new" })).toBeEnabled();
   });
 
   it("supports keyboard tab navigation with unique panel relationships for multiple inspectors", () => {

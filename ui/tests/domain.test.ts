@@ -6,6 +6,7 @@ import {
   flowSteps,
   liveStepKey,
   detectPatterns,
+  smartSummary,
 } from "../src/lib/timeline";
 import { buildCurl, shellQuote } from "../src/lib/curl";
 import { mergeEntries, visibleEntries } from "../src/lib/entries";
@@ -93,6 +94,25 @@ describe("timeline normalization", () => {
     expect(
       detectPatterns({ kind: "user", text: "<system-reminder>Use tools</system-reminder>" }),
     ).toContain("reminder");
+  });
+  it("previews arbitrary tool arguments with meaningful field names and handles non-object inputs", () => {
+    expect(smartSummary({ kind: "tool_use", name: "read_item", text: '{"id":"evidence-2"}' })).toBe("id: evidence-2");
+    expect(smartSummary({ kind: "tool_use", name: "raise_point", text: '{"section":"evidence.saw","text":"Check the wait time","strict":true}' })).toBe("section: evidence.saw · text: Check the wait time · strict: true");
+    for (const text of ["null", "[]", '"raw input"', "not json"])
+      expect(smartSummary({ kind: "tool_use", name: "custom", text })).toBe(text);
+  });
+  it("marks all response events as new, including terminal failures, and preserves provider-specific blocks", () => {
+    const captured = record("1", [{ type: "provider-extension", payload: "opaque value" }]);
+    captured.parsed!.response!.stop_reason = "completed";
+    const steps = flowSteps(captured);
+    expect(steps.filter((step) => step.latest).map((step) => step.kind)).toEqual(["assistant", "stop"]);
+    expect(steps.find((step) => step.label === "provider-extension")?.text).toContain('"payload": "opaque value"');
+    captured.parsed!.response!.content = [{ type: "text" }];
+    expect(flowSteps(captured).find((step) => step.kind === "assistant")?.text).toBe("");
+    captured.parsed!.response = null;
+    captured.response = null;
+    captured.error = "transport failure";
+    expect(flowSteps(captured).at(-1)).toMatchObject({ kind: "stop", latest: true, text: "error: transport failure" });
   });
 });
 describe("request state and export", () => {

@@ -138,12 +138,17 @@ export function flowSteps(
       } else if (b.type === "thinking") {
         steps.push({ kind: "thinking", text: b.thinking ?? "", latest: true });
       } else {
-        steps.push({ kind: "assistant", text: b.text ?? "", latest: true });
+        steps.push({
+          kind: "assistant",
+          label: b.type === "text" ? undefined : b.type,
+          text: b.text ?? (b.type === "text" ? "" : JSON.stringify(b, null, 2)),
+          latest: true,
+        });
       }
       emittedResponse = true;
     }
     if (r.stop_reason) {
-      steps.push({ kind: "stop", text: r.stop_reason });
+      steps.push({ kind: "stop", text: r.stop_reason, latest: true });
       emittedResponse = true;
     }
   }
@@ -153,7 +158,7 @@ export function flowSteps(
   // and the entry would otherwise disappear entirely.
   if (!emittedResponse) {
     const status = rec.response?.status;
-    const err = r?.error ?? rec.response?.error;
+    const err = r?.error ?? rec.response?.error ?? rec.error;
     if (err || (status && status >= 400)) {
       const msg = err?.message || err?.type || (typeof err === "string" ? err : "");
       // callId keys this row per-turn so two turns that fail with the *same*
@@ -162,6 +167,7 @@ export function flowSteps(
         kind: "stop",
         callId: "resp-error|" + (rec.id ?? rec.seq ?? ""),
         text: `error${status ? " " + status : ""}${msg ? ": " + oneLine(msg, 140) : ""}`,
+        latest: true,
       });
     }
   }
@@ -185,39 +191,54 @@ export function smartSummary(step: TimelineStep) {
   }
   if (step.kind === "stop") return step.text || "";
   if (step.kind === "tool_use" || step.kind === "skill") {
-    let input: Record<string, any> = {};
+    let input: Record<string, unknown> = {};
     try {
-      input = JSON.parse(step.text);
+      const parsed: unknown = JSON.parse(step.text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+        input = parsed as Record<string, unknown>;
     } catch {
       /* not JSON */
     }
     const name = step.name || "";
     if (name === "Bash") return oneLine(input.command, 140);
     if (name === "Read") {
-      const loc = input.file_path || "";
+      const loc = oneLine(input.file_path, 140);
+      const end = typeof input.offset === "number" && typeof input.limit === "number" && input.limit
+        ? `-${input.offset + input.limit}`
+        : "";
       const rng =
-        input.offset != null
-          ? `:${input.offset}${input.limit ? `-${input.offset + input.limit}` : ""}`
+        typeof input.offset === "number"
+          ? `:${input.offset}${end}`
           : "";
       return loc + rng;
     }
     if (name === "Edit" || name === "Write" || name === "NotebookEdit")
       return oneLine(input.file_path, 140);
     if (name === "Grep")
-      return [input.pattern && `"${input.pattern}"`, input.path].filter(Boolean).join(" in ");
-    if (name === "Glob") return input.pattern || "";
+      return oneLine(
+        [input.pattern && `"${input.pattern}"`, input.path].filter(Boolean).join(" in "),
+        140,
+      );
+    if (name === "Glob") return oneLine(input.pattern, 140);
     if (name === "WebFetch" || name === "WebSearch") return oneLine(input.url || input.query, 140);
-    if (name === "Skill") return input.skill || input.name || "";
+    if (step.kind === "skill" || name === "Skill")
+      return oneLine(input.skill || input.name || name, 140);
     if (name === "TaskCreate" || name === "TaskUpdate")
       return oneLine(input.subject || input.description, 140);
-    if (name === "AskUserQuestion") return oneLine(input.questions?.[0]?.question, 140);
+    if (name === "AskUserQuestion" && Array.isArray(input.questions))
+      return oneLine(input.questions[0]?.question, 140);
     if (/sql|query|exec/i.test(name))
       return oneLine(input.sql || input.query || input.statement, 140);
-    const firstScalar = Object.values(input).find(
-      (v) => typeof v === "string" || typeof v === "number",
+    const fields = Object.entries(input).filter(
+      ([, value]) =>
+        typeof value === "string" || typeof value === "number" || typeof value === "boolean",
     );
-    if (firstScalar != null) return oneLine(firstScalar, 140);
-    return oneLine(step.text, 140);
+    if (fields.length)
+      return oneLine(
+        fields.slice(0, 3).map(([key, value]) => `${key}: ${value}`).join(" · "),
+        180,
+      );
+    return oneLine(step.text, 180);
   }
   if (step.kind === "tools") return `${step.count} tools offered to the model`;
   return oneLine(step.text, 200);

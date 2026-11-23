@@ -243,7 +243,6 @@ export default function SummaryView(props: SummaryViewProps) {
     <section className="summary-view" aria-label="Usage summary" aria-busy={loading || undefined}>
       <div className="detail-header summary-header">
         <div>
-          <span className="eyebrow">THE BIG PICTURE</span>
           <h2 className="flex items-center gap-2">
             <BarChart3 size={22} />
             Usage summary

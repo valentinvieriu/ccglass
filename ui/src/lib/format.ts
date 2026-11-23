@@ -7,7 +7,7 @@ export function fmtMs(ms: number | null | undefined) {
 }
 export function fmtTps(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return "—";
-  if (n >= 100) return `${Math.round(n)} tok/s`;
+  if (n >= 100) return `${Math.round(n).toLocaleString("en-US")} tok/s`;
   return `${n.toFixed(n >= 10 ? 1 : 2)} tok/s`;
 }
 export const fmtCost = (n: number | null | undefined) => `$${Number(n || 0).toFixed(4)}`;
@@ -28,4 +28,13 @@ export function idHue(id: string) {
 }
 export function callColor(id: string) {
   return `oklch(0.58 0.12 ${idHue(id)})`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Turns a capture id like 2026-11-23T20-45-10-567 into "Nov 23 · 20:45:10". */
+export function sessionLabel(id: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(id);
+  if (!match) return id;
+  const month = MONTHS[Number(match[2]) - 1];
+  return month ? `${month} ${Number(match[3])} · ${match[4]}:${match[5]}:${match[6]}` : id;
 }

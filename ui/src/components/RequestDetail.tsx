@@ -1,24 +1,21 @@
 import { useId, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
-  Brain,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Code2,
-  Cpu,
   FileText,
   Gauge,
-  MessageSquare,
   List,
-  Terminal,
   Wrench,
 } from "lucide-react";
 import type { RequestRecord } from "../types";
 import { callColor, fmt, fmtMs, fmtTps } from "../lib/format";
 import { buildCurl } from "../lib/curl";
-import { flowSteps, toolCategory } from "../lib/timeline";
+import { toolCategory } from "../lib/timeline";
 import { ContentBlock, CopyButton, TextContent } from "./JsonView";
+import FlowView from "./FlowView";
 
 const tabs = [
   "overview",
@@ -98,83 +95,6 @@ function Badge({
   );
 }
 
-function FlowBody({ text }: { text: string }) {
-  return <TextContent text={text} compact />;
-}
-
-function FlowView({ record }: { record: RequestRecord }) {
-  const steps = flowSteps(record);
-  const tools = record.parsed?.view?.tools ?? [];
-  if (!steps.length) return <EmptyContent>No conversation steps in this request.</EmptyContent>;
-  return (
-    <div>
-      {!!tools.length && (
-        <ContentBlock
-          title={`${tools.length} tools available to the model`}
-          value={tools.map((tool) => tool.name).join("\n")}
-        />
-      )}
-      <ol className="timeline m-0 list-none p-0">
-        {steps.map((step, index) => {
-          const Icon =
-            step.kind === "thinking"
-              ? Brain
-              : step.kind === "tool_use" || step.kind === "skill"
-                ? Wrench
-                : step.kind === "tool_result"
-                  ? Terminal
-                  : step.kind === "assistant"
-                    ? Cpu
-                    : MessageSquare;
-          const title =
-            step.kind === "tool_use"
-              ? step.name || "Tool call"
-              : step.kind === "skill"
-                ? `Skill · ${step.name || "skill"}`
-                : step.kind === "tool_result"
-                  ? "Tool result"
-                  : step.kind === "stop"
-                    ? "Turn completed"
-                    : step.kind;
-          const failed =
-            step.kind === "stop" &&
-            (responseError(record) != null || (record.response?.status ?? 0) >= 400);
-          return (
-            <li key={`${step.callId || step.kind}-${index}`} className="timeline-row">
-              <div
-                className={`timeline-marker ${failed || step.isError ? "error" : step.kind === "assistant" || step.kind === "thinking" ? "assistant" : step.callId ? "tool" : ""}`}
-                style={step.callId ? { borderColor: callColor(step.callId) } : undefined}
-              >
-                <Icon size={16} />
-              </div>
-              <div className="timeline-content">
-                <div className="timeline-heading flex-wrap">
-                  <strong>{title}</strong>
-                  <div className="flex flex-wrap gap-1">
-                    {step.latest && <Badge tone="accent">this turn</Badge>}
-                    {step.callId && <Badge title={step.callId}>{step.callId.slice(-8)}</Badge>}
-                    {step.kind === "tool_result" && (
-                      <Badge tone={step.isError ? "danger" : "success"}>
-                        {step.isError ? "error" : "result"}
-                      </Badge>
-                    )}
-                    {failed && <Badge tone="danger">error</Badge>}
-                  </div>
-                </div>
-                {step.kind === "stop" ? (
-                  <p className="timeline-summary">{step.text}</p>
-                ) : (
-                  <FlowBody text={step.text || ""} />
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
 function Overview({ record }: { record: RequestRecord }) {
   const parsed = record.parsed;
   const cost = parsed?.cost;
@@ -202,7 +122,7 @@ function Overview({ record }: { record: RequestRecord }) {
   const view = parsed?.view;
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="section-head flex items-center gap-2 mb-3">
         <Clock3 size={15} />
         <h3 className="section-title">Performance</h3>
       </div>
@@ -213,7 +133,7 @@ function Overview({ record }: { record: RequestRecord }) {
         <MetricCard label="Input speed" value={fmtTps(timing?.inTps)} note="Before first byte" />
         <MetricCard label="Output speed" value={fmtTps(timing?.outTps)} note="After first byte" />
       </div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="section-head flex items-center gap-2 mb-3">
         <Gauge size={15} />
         <h3 className="section-title">{cost?.usd != null ? "Tokens & cost" : "Token usage"}</h3>
       </div>
@@ -250,7 +170,7 @@ function Overview({ record }: { record: RequestRecord }) {
           />
         )}
       </div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="section-head flex items-center gap-2 mb-3">
         <Code2 size={15} />
         <h3 className="section-title">Request details</h3>
       </div>
@@ -485,12 +405,13 @@ export default function RequestDetail({
           {navigation && (
             <div className="request-navigation" aria-label="Request navigation">
               <button
-                className="button button-ghost icon-button"
+                className="button button-ghost button-sm"
                 aria-label="Back to session replay"
                 title="Back to session replay"
                 onClick={navigation.onReplay}
               >
-                <List size={15} />
+                <List size={14} />
+                <span>Timeline</span>
               </button>
               <button
                 className="button button-ghost icon-button"
@@ -585,7 +506,7 @@ export default function RequestDetail({
         className="panel-body"
       >
         {tab === "overview" && <Overview record={record} />}
-        {tab === "flow" && <FlowView record={record} />}
+        {tab === "flow" && <FlowView key={record.id} record={record} />}
         {tab === "system" &&
           (view?.system?.length ? (
             view.system.map((block, index) => (

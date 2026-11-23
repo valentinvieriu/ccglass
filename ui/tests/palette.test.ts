@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const stylesheet = readFileSync("ui/src/styles.css", "utf8");
-const tokens = Object.fromEntries(
-  [...stylesheet.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2].trim()]),
-);
+const darkBlock = stylesheet.match(/:root\[data-theme="dark"\]\s*\{[^}]*\}/)![0];
+const parseTokens = (css: string) =>
+  Object.fromEntries(
+    [...css.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2].trim()]),
+  );
+const lightTokens = parseTokens(stylesheet.replace(darkBlock, ""));
+const themes = { light: lightTokens, dark: { ...lightTokens, ...parseTokens(darkBlock) } };
+let tokens: Record<string, string> = lightTokens;
 
 function luminance(name: string, overrides: Record<string, string> = {}): number {
   const values = { ...tokens, ...overrides };
@@ -38,7 +43,11 @@ function contrast(foreground: string, background: string, overrides?: Record<str
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-describe("accessible semantic palette", () => {
+describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (theme) => {
+  beforeAll(() => {
+    tokens = themes[theme];
+  });
+
   it("keeps text readable on normal, selected, status, and sidebar surfaces", () => {
     const pairs = [
       ...[

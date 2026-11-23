@@ -6,9 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   LockKeyhole,
-  Maximize2,
-  Minimize2,
-  Radio,
   Terminal,
   X,
 } from "lucide-react";
@@ -22,11 +19,14 @@ import DiffView from "./components/DiffView";
 import SummaryView from "./components/SummaryView";
 import type { RequestRecord } from "./types";
 import { visibleEntries } from "./lib/entries";
+import { useTheme } from "./lib/theme";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 type View = "requests" | "diff" | "summary";
 
 export default function App() {
   const dashboard = useDashboard();
+  const theme = useTheme();
   const [view, setView] = useState<View>("requests");
   const [selected, setSelected] = useState<string | null>(null);
   const [pickedRecord, setPickedRecord] = useState<RequestRecord | null>(null);
@@ -47,14 +47,20 @@ export default function App() {
     [dashboard.entries, dashboard.stats?.models],
   );
   const isLive = !!dashboard.live && dashboard.live === dashboard.session;
-  const selectedEntry = dashboard.entries.find((entry) => entry.id === selected);
+  const selectedEntry = dashboard.entries.find(
+    (entry) => entry.id === selected,
+  );
   const navigableEntries = useMemo(
     () => visibleEntries(dashboard.entries, dashboard.modelFilter),
     [dashboard.entries, dashboard.modelFilter],
   );
-  const selectedIndex = navigableEntries.findIndex((entry) => entry.id === selected);
+  const selectedIndex = navigableEntries.findIndex(
+    (entry) => entry.id === selected,
+  );
   const end =
-    pageEnd == null ? dashboard.entries.length : Math.min(pageEnd, dashboard.entries.length);
+    pageEnd == null
+      ? dashboard.entries.length
+      : Math.min(pageEnd, dashboard.entries.length);
   const start = Math.max(0, end - dashboard.recordLimit);
   const pageEntries = useMemo(
     () => dashboard.entries.slice(start, end),
@@ -73,7 +79,8 @@ export default function App() {
     if (
       selected &&
       (!selectedEntry ||
-        (dashboard.modelFilter !== "all" && selectedEntry.model !== dashboard.modelFilter))
+        (dashboard.modelFilter !== "all" &&
+          selectedEntry.model !== dashboard.modelFilter))
     ) {
       setSelected(null);
       setPickedRecord(null);
@@ -127,9 +134,12 @@ export default function App() {
       ? "Usage summary"
       : view === "diff"
         ? "Compare requests"
-        : "Request inspector";
+        : dashboard.modelFilter === "all"
+          ? "Requests"
+          : dashboard.modelFilter;
   const record = selected
-    ? dashboard.records[selected] || (pickedRecord?.id === selected ? pickedRecord : null)
+    ? dashboard.records[selected] ||
+      (pickedRecord?.id === selected ? pickedRecord : null)
     : null;
   return (
     <div className="shell">
@@ -141,7 +151,6 @@ export default function App() {
           <span>ccglass</span>
         </div>
         <p className="brand-subtitle">Agent observability</p>
-        <p className="sidebar-label">Workspace</p>
         <nav aria-label="Dashboard views">
           <button
             className="nav-item"
@@ -175,22 +184,20 @@ export default function App() {
         <div className="sidebar-divider" />
         <div className="sidebar-note">
           <LockKeyhole size={14} />
-          <span>
-            Local by design.
-            <br />
-            Your captures stay here.
-          </span>
+          <span>Captures stay on this machine.</span>
         </div>
         <div className="sidebar-footer">
+          <ThemeToggle value={theme.preference} onChange={theme.choose} />
           <strong className="flex items-center gap-2">
-            <span className="status-dot" />
+            <span
+              className={`status-dot ${dashboard.connection === "connected" ? "status-ok" : "status-wait"}`}
+            />
             {dashboard.connection === "connected"
               ? "Connected to proxy"
               : dashboard.connection === "connecting"
                 ? "Connecting…"
                 : "Reconnecting…"}
           </strong>
-          <p>Live updates via event stream</p>
         </div>
       </aside>
       <main className="workspace">
@@ -204,6 +211,23 @@ export default function App() {
           onSelect={(session) => void dashboard.selectSession(session)}
           onCapture={(action) => void dashboard.changeCapture(action)}
           onExport={() => void dashboard.exportSession()}
+          status={{
+            live: isLive,
+            label: dashboard.loading
+              ? "Loading session"
+              : isLive
+                ? "Recording"
+                : !dashboard.controllable
+                  ? "Read-only"
+                  : dashboard.live
+                    ? "Saved session"
+                    : "Capture stopped",
+          }}
+          focus={
+            view !== "summary"
+              ? { active: focused, onToggle: () => setFocused(!focused) }
+              : undefined
+          }
         />
         <div className="workspace-content">
           {dashboard.error && (
@@ -218,41 +242,6 @@ export default function App() {
               </button>
             </div>
           )}
-          <div className="workspace-status">
-            <p className="eyebrow">
-              {view === "summary"
-                ? "All captured sessions"
-                : dashboard.modelFilter === "all"
-                  ? focused
-                    ? "Payload focus"
-                    : "Session overview"
-                  : dashboard.modelFilter}
-            </p>
-            <div className="workspace-status-actions">
-              {view !== "summary" && (
-                <button
-                  className="button button-ghost button-sm"
-                  aria-pressed={focused}
-                  onClick={() => setFocused(!focused)}
-                >
-                  {focused ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                  {focused ? "Show panels" : "Focus payload"}
-                </button>
-              )}
-              <span className={`badge ${isLive ? "badge-success" : "badge-muted"}`} role="status">
-                <Radio size={10} />
-                {dashboard.loading
-                  ? "Loading session"
-                  : isLive
-                    ? "Recording"
-                    : !dashboard.controllable
-                      ? "Read-only"
-                      : dashboard.live
-                        ? "Saved session"
-                        : "Capture stopped"}
-              </span>
-            </div>
-          </div>
           {view !== "summary" && !focused && (
             <SessionMetrics
               entries={dashboard.entries}
@@ -272,12 +261,20 @@ export default function App() {
                 setSelected(null);
                 void dashboard.selectSession(session);
               }}
-              onExportSession={(session) => void dashboard.exportSession(session)}
-              onResetSession={(session) => void dashboard.changeCapture("reset", session)}
-              onDeleteSession={(session) => void dashboard.changeCapture("delete", session)}
+              onExportSession={(session) =>
+                void dashboard.exportSession(session)
+              }
+              onResetSession={(session) =>
+                void dashboard.changeCapture("reset", session)
+              }
+              onDeleteSession={(session) =>
+                void dashboard.changeCapture("delete", session)
+              }
             />
           ) : (
-            <div className={`inspector-grid ${focused ? "inspector-focused" : ""}`}>
+            <div
+              className={`inspector-grid ${focused ? "inspector-focused" : ""}`}
+            >
               {!focused && (
                 <RequestList
                   key={`${dashboard.session}|${dashboard.sessionVersion}`}
@@ -293,7 +290,9 @@ export default function App() {
               )}
               <section
                 className="detail-panel"
-                aria-label={view === "diff" ? "Request comparison" : "Request detail"}
+                aria-label={
+                  view === "diff" ? "Request comparison" : "Request detail"
+                }
               >
                 {view === "diff" ? (
                   <DiffView
@@ -315,11 +314,18 @@ export default function App() {
                         onReplay: () => setSelected(null),
                         previous:
                           selectedIndex > 0
-                            ? () => setSelected(navigableEntries[selectedIndex - 1].id)
+                            ? () =>
+                                setSelected(
+                                  navigableEntries[selectedIndex - 1].id,
+                                )
                             : undefined,
                         next:
-                          selectedIndex >= 0 && selectedIndex < navigableEntries.length - 1
-                            ? () => setSelected(navigableEntries[selectedIndex + 1].id)
+                          selectedIndex >= 0 &&
+                          selectedIndex < navigableEntries.length - 1
+                            ? () =>
+                                setSelected(
+                                  navigableEntries[selectedIndex + 1].id,
+                                )
                             : undefined,
                         position: selectedIndex + 1,
                         total: navigableEntries.length,
@@ -328,14 +334,18 @@ export default function App() {
                   ) : (
                     <div className="empty-state">
                       <p>
-                        {dashboard.error ? "This request could not be loaded." : "Loading request…"}
+                        {dashboard.error
+                          ? "This request could not be loaded."
+                          : "Loading request…"}
                       </p>
                       {dashboard.error && (
                         <button
                           className="button"
                           onClick={() => {
                             dashboard.clearError();
-                            void dashboard.loadRecord(selected, true).then(setPickedRecord);
+                            void dashboard
+                              .loadRecord(selected, true)
+                              .then(setPickedRecord);
                           }}
                         >
                           Retry
@@ -356,7 +366,8 @@ export default function App() {
                           Earlier turns
                         </button>
                         <span>
-                          Requests {start + 1}–{end} of {dashboard.entries.length}
+                          Requests {start + 1}–{end} of{" "}
+                          {dashboard.entries.length}
                         </span>
                         <button
                           className="button button-sm"
@@ -366,7 +377,9 @@ export default function App() {
                               end + dashboard.recordLimit,
                               dashboard.entries.length,
                             );
-                            setPageEnd(next === dashboard.entries.length ? null : next);
+                            setPageEnd(
+                              next === dashboard.entries.length ? null : next,
+                            );
                           }}
                         >
                           Later turns

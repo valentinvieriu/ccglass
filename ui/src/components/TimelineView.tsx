@@ -138,7 +138,7 @@ const TimelineEvent = memo(
     return (
       <div className="timeline-row" data-event-key={eventKey(row)} data-kind={row.kind}>
         <span
-          className={`timeline-marker ${error ? "error" : tool || row.kind === "tool_result" ? "tool" : row.kind === "assistant" ? "assistant" : ""}`}
+          className={`timeline-marker ${error ? "error" : tool || row.kind === "tool_result" ? "tool" : row.kind === "assistant" ? "assistant" : row.kind === "user" ? "user" : ""}`}
           style={pairedStyle}
         >
           <Icon size={13} aria-hidden="true" />
@@ -340,7 +340,7 @@ export default function TimelineView({
           Export session
         </button>
       </div>
-      <div className="border-b border-border px-5 py-2 text-[10px] text-muted">
+      <div className="border-b border-border px-5 py-2 text-[11px] text-muted">
         {isLive ? "Turns append as requests arrive." : "Saved session replay."} Click a turn or a
         request on the left to inspect the full HTTP call.
         {entries.length >= limit && (

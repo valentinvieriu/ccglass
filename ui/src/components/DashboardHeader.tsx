@@ -1,5 +1,14 @@
-import { Download, Square, Play, RotateCcw } from "lucide-react";
+import {
+  Download,
+  Square,
+  Play,
+  RotateCcw,
+  Radio,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import type { CaptureAction } from "../types";
+import { sessionLabel } from "../lib/format";
 
 interface Props {
   title: string;
@@ -11,6 +20,8 @@ interface Props {
   onSelect: (session: string) => void;
   onCapture: (action: CaptureAction) => void;
   onExport: () => void;
+  status?: { label: string; live: boolean };
+  focus?: { active: boolean; onToggle: () => void };
 }
 
 export function DashboardHeader({
@@ -23,15 +34,31 @@ export function DashboardHeader({
   onSelect,
   onCapture,
   onExport,
+  status,
+  focus,
 }: Props) {
   return (
     <header className="topbar">
       <div className="topbar-title">
         <h1>{title}</h1>
+        {status && (
+          <span
+            className={`badge ${status.live ? "badge-success" : "badge-muted"}`}
+            role="status"
+          >
+            {status.live ? (
+              <span className="status-dot" />
+            ) : (
+              <Radio size={10} />
+            )}
+            {status.label}
+          </span>
+        )}
       </div>
       <div className="topbar-actions">
         <select
           className="session-select"
+          title={session || undefined}
           aria-label="Captured session"
           value={session || ""}
           onChange={(event) => onSelect(event.target.value)}
@@ -40,11 +67,22 @@ export function DashboardHeader({
           {!sessions.length && <option value="">No sessions yet</option>}
           {sessions.map((id) => (
             <option key={id} value={id}>
-              {id}
+              {sessionLabel(id)}
               {id === live ? " · recording" : " · saved"}
             </option>
           ))}
         </select>
+        {focus && (
+          <button
+            className="button button-ghost"
+            aria-pressed={focus.active}
+            onClick={focus.onToggle}
+            title="Hide the sidebar panels and metrics to give the payload more room"
+          >
+            {focus.active ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            {focus.active ? "Show panels" : "Focus payload"}
+          </button>
+        )}
         <button
           className="button"
           disabled={!session}
@@ -62,7 +100,11 @@ export function DashboardHeader({
               aria-label="Reset session"
               title="Clear only the selected session"
               onClick={() => {
-                if (window.confirm("Clear all requests in this session? This cannot be undone."))
+                if (
+                  window.confirm(
+                    "Clear all requests in this session? This cannot be undone.",
+                  )
+                )
                   onCapture("reset");
               }}
             >

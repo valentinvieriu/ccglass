@@ -146,7 +146,7 @@ const RequestRow = memo(function RequestRow({
       onClick={() => onSelect(entry.id)}
     >
       <div className="request-title">
-        <span className={`status-dot ${failed ? "status-error" : ""}`} />
+        <span className={`status-dot ${failed ? "status-error" : entry.status != null ? "status-ok" : ""}`} />
         <span className="model-name">{entry.model || "Unknown model"}</span>
         <span className="request-seq">#{entry.seq}</span>
       </div>
