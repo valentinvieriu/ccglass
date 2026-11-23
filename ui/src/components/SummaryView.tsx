@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowUpRight,
   BarChart3,
   Download,
-  FolderOpen,
   Layers3,
   RotateCcw,
   Trash2,
@@ -13,7 +11,7 @@ import type { UsageBucket, UsageSession, UsageSummary } from "../types";
 import { fmt, fmtCost, pct } from "../lib/format";
 import { MetricCard } from "./RequestDetail";
 
-type SummaryTab = "model" | "session" | "timestamp";
+type SummaryTab = "model" | "session";
 export interface SummaryViewProps {
   usage: UsageSummary | null;
   loading?: boolean;
@@ -78,9 +76,7 @@ function SessionTable({
       <table className="data-table">
         <thead>
           <tr>
-            {showNames && <th scope="col">Session name</th>}
             <th scope="col">Session</th>
-            <th scope="col">Status</th>
             <th scope="col" className="text-right!">
               Requests
             </th>
@@ -104,101 +100,128 @@ function SessionTable({
                 Estimated cost
               </th>
             )}
-            <th scope="col">Actions</th>
+            <th scope="col" className="text-right!">
+              Actions
+            </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.session}>
-              {showNames && <td>{row.name || "Untitled session"}</td>}
-              <td>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-ink hover:text-accent"
-                  onClick={() => onOpenSession(row.session)}
-                >
-                  {row.session}
-                  <ArrowUpRight size={12} />
-                </button>
-                {row.from && <small className="mt-1 block muted">{dateLabel(row.from)}</small>}
-              </td>
-              <td>
-                <span className={`badge ${row.session === live ? "badge-success" : "badge-muted"}`}>
-                  {row.session === live ? "Recording" : "Saved"}
-                </span>
-              </td>
-              <td className="text-right tabular-nums">{fmt(row.entries ?? row.requests)}</td>
-              <td className="text-right tabular-nums">{fmt(row.input)}</td>
-              <td className="text-right tabular-nums">{fmt(row.output)}</td>
-              <td className="text-right tabular-nums">{fmt(row.cacheRead)}</td>
-              <td className="text-right tabular-nums">{fmt(row.cacheWrite)}</td>
-              <td className="text-right tabular-nums">{pct(cacheHitRate(row))}</td>
-              {showCost && <td className="text-right tabular-nums">{costLabel(row)}</td>}
-              <td>
-                <div className="flex flex-wrap gap-1">
+          {rows.map((row) => {
+            const recording = row.session === live;
+            // The id already encodes the capture time, so one readable label
+            // plus the id identifies a session; a name replaces the date.
+            const label = (showNames && row.name) || (row.from && dateLabel(row.from)) || row.session;
+            return (
+              <tr key={row.session}>
+                <td>
                   <button
                     type="button"
-                    className="button button-sm"
+                    className="session-cell"
                     onClick={() => onOpenSession(row.session)}
                     aria-label={`Open session ${row.session}`}
+                    title="Open this session in the request inspector"
                   >
-                    <FolderOpen size={13} />
-                    Open
+                    <span className="session-cell-title">
+                      <span>{label}</span>
+                      {recording && <span className="badge badge-success">Recording</span>}
+                    </span>
+                    {label !== row.session && (
+                      <span className="session-cell-id mono">{row.session}</span>
+                    )}
                   </button>
-                  <button
-                    type="button"
-                    className="button button-sm"
-                    onClick={() => onExportSession(row.session)}
-                    disabled={busy}
-                    aria-label={`Export session ${row.session}`}
-                  >
-                    <Download size={13} />
-                    Export
-                  </button>
-                  {controllable && (
-                    <>
-                      <button
-                        type="button"
-                        className="button button-sm"
-                        onClick={() => mutate("reset", row.session)}
-                        disabled={busy}
-                        aria-label={`Reset session ${row.session}`}
-                        title="Clear this session's requests"
-                      >
-                        <RotateCcw size={13} />
-                        Reset
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-sm button-danger"
-                        onClick={() => mutate("delete", row.session)}
-                        disabled={busy || row.session === live}
-                        aria-label={`Delete session ${row.session}`}
-                        title={
-                          row.session === live
-                            ? "Stop this session before deleting it"
-                            : "Delete this saved session"
-                        }
-                      >
-                        <Trash2 size={13} />
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="text-right tabular-nums">{fmt(row.entries ?? row.requests)}</td>
+                <td className="text-right tabular-nums">{fmt(row.input)}</td>
+                <td className="text-right tabular-nums">{fmt(row.output)}</td>
+                <td className="text-right tabular-nums">{fmt(row.cacheRead)}</td>
+                <td className="text-right tabular-nums">{fmt(row.cacheWrite)}</td>
+                <td className="tabular-nums">
+                  <div className="flex justify-end items-center gap-2">
+                    <meter
+                      className="w-10"
+                      min={0}
+                      max={1}
+                      value={cacheHitRate(row)}
+                      aria-label={`Cache hit rate for session ${row.session}`}
+                    />
+                    {pct(cacheHitRate(row))}
+                  </div>
+                </td>
+                {showCost && <td className="text-right tabular-nums">{costLabel(row)}</td>}
+                <td>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="button button-ghost button-sm icon-button"
+                      onClick={() => onExportSession(row.session)}
+                      disabled={busy}
+                      aria-label={`Export session ${row.session}`}
+                      title="Export this session"
+                    >
+                      <Download size={13} />
+                    </button>
+                    {controllable && (
+                      <>
+                        <button
+                          type="button"
+                          className="button button-ghost button-sm icon-button"
+                          onClick={() => mutate("reset", row.session)}
+                          disabled={busy}
+                          aria-label={`Reset session ${row.session}`}
+                          title="Clear this session's requests"
+                        >
+                          <RotateCcw size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button-sm icon-button row-action-danger"
+                          onClick={() => mutate("delete", row.session)}
+                          disabled={busy || recording}
+                          aria-label={`Delete session ${row.session}`}
+                          title={
+                            recording
+                              ? "Stop this session before deleting it"
+                              : "Delete this saved session"
+                          }
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
+// Resolving names scans local agent transcripts, so the choice is remembered:
+// turning it off once keeps the session table from ever triggering the lookup.
+const NAMES_KEY = "ccglass-session-names";
+function storedShowNames() {
+  try {
+    return localStorage.getItem(NAMES_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export default function SummaryView(props: SummaryViewProps) {
   const { usage, loading, controllable } = props;
   const [tab, setTab] = useState<SummaryTab>("model");
-  const [showNames, setShowNames] = useState(true);
+  const [showNames, setShowNamesState] = useState(storedShowNames);
+  const setShowNames = (value: boolean) => {
+    setShowNamesState(value);
+    try {
+      localStorage.setItem(NAMES_KEY, value ? "1" : "0");
+    } catch {
+      /* storage unavailable: the choice lasts for this page only */
+    }
+  };
   const [names, setNames] = useState<Record<string, string>>({});
   const [namesError, setNamesError] = useState<string | null>(null);
   const [namesLoading, setNamesLoading] = useState(false);
@@ -235,20 +258,18 @@ export default function SummaryView(props: SummaryViewProps) {
   const summaryTabs: [SummaryTab, string][] = [
     ["model", "By model"],
     ["session", "By session"],
-    ["timestamp", "By timestamp"],
   ];
   const modelCost = usage?.byModel.some(hasCost) ?? false;
   const sessionCost = usage?.bySession.some(hasCost) ?? false;
   return (
     <section className="summary-view" aria-label="Usage summary" aria-busy={loading || undefined}>
-      <div className="detail-header summary-header">
-        <div>
-          <h2 className="flex items-center gap-2">
-            <BarChart3 size={22} />
-            Usage summary
-          </h2>
-          <p>Tokens and cache efficiency across every captured session.</p>
-        </div>
+      <div className="summary-header">
+        <p>
+          Tokens and cache efficiency across every captured session
+          {usage?.range?.from
+            ? ` · ${dateLabel(usage.range.from)} — ${dateLabel(usage.range.to)}`
+            : "."}
+        </p>
         {usage && (
           <span className="badge">
             <Layers3 size={13} />
@@ -316,11 +337,8 @@ export default function SummaryView(props: SummaryViewProps) {
               />
             )}
           </div>
-          <p className="my-4 text-xs muted">
-            {dateLabel(usage.range?.from)} <span>—</span> {dateLabel(usage.range?.to)}
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="tabs px-0!" role="tablist" aria-label="Summary grouping">
+          <div className="summary-tabs">
+            <div className="tabs" role="tablist" aria-label="Summary grouping">
               {summaryTabs.map(([id, label]) => (
                 <button
                   type="button"
@@ -430,7 +448,7 @@ export default function SummaryView(props: SummaryViewProps) {
                   ...row,
                   name: names[row.session] || row.name,
                 }))}
-                showNames={tab === "session" && showNames}
+                showNames={showNames}
                 showCost={sessionCost}
               />
             )}

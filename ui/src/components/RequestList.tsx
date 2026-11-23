@@ -41,12 +41,6 @@ export const RequestList = memo(function RequestList({
   const rows = useMemo(() => groupRetries(filtered), [filtered]);
   return (
     <aside className="request-panel" aria-label="Captured requests">
-      <div className="panel-header">
-        <h2>Requests</h2>
-        <span className="panel-count">
-          {filtered.length} / {entries.length}
-        </span>
-      </div>
       <div className="request-toolbar">
         <div className="search-wrap">
           <Search size={12} />
@@ -57,6 +51,9 @@ export const RequestList = memo(function RequestList({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
+          <span className="panel-count" aria-label="Requests shown">
+            {filtered.length} / {entries.length}
+          </span>
         </div>
         <div className="filter-row">
           <select
@@ -95,7 +92,6 @@ export const RequestList = memo(function RequestList({
             <RequestRow
               entry={entry}
               selected={selected === entry.id || picks.includes(entry.id)}
-              retries={entry.retries.length}
               onSelect={onSelect}
             />
             {!!entry.retries.length && (
@@ -127,43 +123,54 @@ export const RequestList = memo(function RequestList({
   );
 });
 
+// Requests without a model (model listings, health probes) are identified by
+// what they called instead of a generic placeholder.
+function endpointLabel(entry: EntrySummary) {
+  if (!entry.url) return null;
+  let path = entry.url;
+  try {
+    path = new URL(entry.url, "http://local").pathname;
+  } catch {
+    /* keep the raw value */
+  }
+  return `${entry.method || "GET"} ${path}`;
+}
+
 const RequestRow = memo(function RequestRow({
   entry,
   selected,
-  retries = 0,
   onSelect,
 }: {
   entry: EntrySummary;
   selected: boolean;
-  retries?: number;
   onSelect: (id: string) => void;
 }) {
   const failed = (entry.status ?? 0) >= 400 || entry.error != null;
+  const endpoint = entry.model ? null : endpointLabel(entry);
+  const facts = [
+    entry.ts ? new Date(entry.ts).toLocaleTimeString() : null,
+    entry.latencyMs != null ? fmtMs(entry.latencyMs) : null,
+    entry.nMessages ? `${entry.nMessages} msg` : null,
+    entry.nTools ? `${entry.nTools} tools` : null,
+    entry.nToolUse ? `${entry.nToolUse} calls` : null,
+  ].filter(Boolean);
   return (
     <button
-      className={`request-row ${selected ? "request-row-selected" : ""}`}
+      className={`request-row ${selected ? "request-row-selected" : ""} ${entry.model ? "" : "request-row-minor"}`}
       aria-pressed={selected}
+      title={entry.format ? `${entry.format} format` : undefined}
       onClick={() => onSelect(entry.id)}
     >
       <div className="request-title">
-        <span className={`status-dot ${failed ? "status-error" : entry.status != null ? "status-ok" : ""}`} />
-        <span className="model-name">{entry.model || "Unknown model"}</span>
-        <span className="request-seq">#{entry.seq}</span>
-      </div>
-      <div className="request-time">
-        {entry.ts ? new Date(entry.ts).toLocaleTimeString() : "—"} · {fmtMs(entry.latencyMs)}
-      </div>
-      <div className="request-meta">
-        <span>{entry.format || "request"}</span>
-        <span>
-          {entry.nMessages || 0} msg · {entry.nTools || 0} tools
-          {entry.nToolUse ? ` · ${entry.nToolUse} calls` : ""}
+        <span className={`model-name ${endpoint ? "mono" : ""}`}>
+          {entry.model || endpoint || "Unknown model"}
         </span>
+        <span className="request-seq">#{entry.seq}</span>
         <span className={`request-status ${failed ? "error" : ""}`}>
           {entry.error != null ? "error" : entry.pending ? "pending" : (entry.status ?? "—")}
         </span>
       </div>
-      {!!retries && <div className="request-time">+{retries} similar requests</div>}
+      <div className="request-time">{facts.length ? facts.join(" · ") : "—"}</div>
     </button>
   );
 });

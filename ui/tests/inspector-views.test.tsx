@@ -428,8 +428,10 @@ describe("session summary", () => {
   it("blocks deletion of recording sessions and delegates saved-session deletion and reset", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const callbacks = actions();
+    // Names are switched off, so the session table must not trigger the lookup.
+    vi.stubGlobal("localStorage", { getItem: () => "0", setItem: () => {} });
     render(<SummaryView usage={usage} controllable live="recording" {...callbacks} />);
-    fireEvent.click(screen.getByRole("tab", { name: "By timestamp" }));
+    fireEvent.click(screen.getByRole("tab", { name: "By session" }));
     expect(screen.getByRole("button", { name: "Delete session recording" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete session saved" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Delete session saved" }));
@@ -444,6 +446,7 @@ describe("session summary", () => {
       expect.stringContaining("Clear all requests in session saved"),
     );
     expect(api).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
 

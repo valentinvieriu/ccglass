@@ -126,7 +126,7 @@ const TimelineEvent = memo(
     const error =
       row.result?.isError ||
       row.isError ||
-      (row.kind === "stop" && /^error(?:\s|$)/.test(row.text));
+      (row.kind === "stop" && /^error(?:[\s:]|$)/.test(row.text));
     const Icon =
       row.kind === "thinking"
         ? Brain
@@ -324,7 +324,7 @@ export default function TimelineView({
       className="detail-panel h-full"
       aria-label={isLive ? "Live timeline" : "Session replay"}
     >
-      <header className="detail-header">
+      <header className="detail-header timeline-header">
         <div>
           <h2>{isLive ? "Live stream" : "Session replay"}</h2>
           <p>
@@ -333,56 +333,62 @@ export default function TimelineView({
             {modelFilter && modelFilter !== "all" ? ` · ${modelFilter}` : ""}
           </p>
         </div>
-        <span className={`badge ${isLive ? "badge-success" : "badge-muted"}`}>
-          <span className="status-dot" />
-          {isLive ? "Live" : "Saved capture"}
-        </span>
+        <div className="timeline-toolbar timeline-toolbar-inline">
+          <label>
+            <input
+              type="checkbox"
+              checked={autoScroll}
+              onChange={(event) => {
+                pinned.current = event.target.checked;
+                setAutoScroll(event.target.checked);
+                if (event.target.checked) scrollToEnd();
+              }}
+            />
+            Auto-scroll
+          </label>
+          <button
+            type="button"
+            className="button button-ghost button-sm"
+            disabled={!rows.length}
+            onClick={() => setFolds({ all: true, overrides: new Map() })}
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            className="button button-ghost button-sm"
+            disabled={!rows.length}
+            onClick={() => setFolds({ all: false, overrides: new Map() })}
+          >
+            Collapse all
+          </button>
+          <button
+            type="button"
+            className="button button-ghost button-sm icon-button"
+            onClick={onExport}
+            aria-label="Export session"
+            title="Export session"
+          >
+            <ArrowDownToLine size={13} />
+          </button>
+        </div>
       </header>
-      <div className="timeline-toolbar">
-        <label>
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(event) => {
-              pinned.current = event.target.checked;
-              setAutoScroll(event.target.checked);
-              if (event.target.checked) scrollToEnd();
-            }}
-          />
-          Auto-scroll
-        </label>
-        <button
-          type="button"
-          className="button button-ghost button-sm"
-          disabled={!rows.length}
-          onClick={() => setFolds({ all: true, overrides: new Map() })}
-        >
-          Expand all
-        </button>
-        <button
-          type="button"
-          className="button button-ghost button-sm"
-          disabled={!rows.length}
-          onClick={() => setFolds({ all: false, overrides: new Map() })}
-        >
-          Collapse all
-        </button>
-        <button type="button" className="button button-sm" onClick={onExport}>
-          <ArrowDownToLine size={12} />
-          Export session
-        </button>
-      </div>
-      <div className="border-b border-border px-5 py-2 text-[11px] text-muted">
+      <div className="timeline-legend">
         <div className="timeline-source-key" aria-label="Request and response key">
           <span><SourceBadge /> Sent to model</span>
           <span><SourceBadge response /> Returned by model</span>
-          <span>Red = error</span>
+          <span className="timeline-legend-error">Red = error</span>
         </div>
-        {isLive ? "Turns append as requests arrive." : "Saved session replay."} Click a turn or a
-        request on the left to inspect the full HTTP call.
-        <p className="mt-1">Tool output is sent back in a later request. Repeated context is shown once.</p>
+        <details className="timeline-help">
+          <summary>How to read this</summary>
+          <p>
+            {isLive ? "Turns append as requests arrive." : "Saved session replay."} Click a turn or
+            a request on the left to inspect the full HTTP call.
+          </p>
+          <p>Tool output is sent back in a later request. Repeated context is shown once.</p>
+        </details>
         {entries.length >= limit && (
-          <p className="mt-1">
+          <p className="timeline-legend-note">
             Showing up to {limit.toLocaleString()} requests per page. Session exports include every
             request.
           </p>
@@ -437,9 +443,10 @@ export default function TimelineView({
               (record?.parsed as { usageStats?: { usd?: number } } | undefined)?.usageStats ??
               record?.usageStats;
             const cost = record?.parsed?.cost?.usd ?? usageStats?.usd;
+            const quiet = !turnRows.length && !!record?.response && !entry.pending;
             return (
               <Fragment key={entry.id}>
-                <div className="timeline-turn">
+                <div className={`timeline-turn ${quiet ? "timeline-turn-quiet" : ""}`}>
                   <button
                     type="button"
                     className="button button-ghost button-sm"
@@ -466,6 +473,7 @@ export default function TimelineView({
                     <span className={status >= 400 ? "text-danger" : ""}>HTTP {status}</span>
                   )}
                   {typeof cost === "number" && <span>{fmtCost(cost)}</span>}
+                  {quiet && <span>no new steps</span>}
                 </div>
                 {turnRows.map((row) => (
                   <TimelineEvent
@@ -476,15 +484,13 @@ export default function TimelineView({
                     onToggle={onToggle}
                   />
                 ))}
-                {!turnRows.length && (
+                {!turnRows.length && !quiet && (
                   <p className="timeline-summary mb-5">
                     {!record
                       ? loading
                         ? "Loading request…"
                         : "Request details are unavailable. Click this turn to retry."
-                      : entry.pending || !record.response
-                        ? "Waiting for the response…"
-                        : "No new conversation steps in this turn."}
+                      : "Waiting for the response…"}
                   </p>
                 )}
               </Fragment>

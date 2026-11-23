@@ -95,7 +95,7 @@ export function DashboardHeader({
         {controllable && (
           <>
             <button
-              className="button icon-button"
+              className="button button-ghost icon-button"
               disabled={busy || !session}
               aria-label="Reset session"
               title="Clear only the selected session"
@@ -111,7 +111,7 @@ export function DashboardHeader({
               <RotateCcw size={13} />
             </button>
             <button
-              className={live ? "button" : "button button-primary"}
+              className={live ? "button button-stop" : "button button-primary"}
               disabled={busy}
               onClick={() => onCapture(live ? "stop" : "start")}
             >

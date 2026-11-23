@@ -82,8 +82,10 @@ describe("summary token rollups and session controls", () => {
   it("confirms saved-session mutations, allows cancellation, and blocks deletion while recording", () => {
     const actions = callbacks();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    // Names are switched off, so the session table must not trigger the lookup.
+    vi.stubGlobal("localStorage", { getItem: () => "0", setItem: () => {} });
     render(<SummaryView usage={usage} controllable live="live" {...actions} />);
-    fireEvent.click(screen.getByRole("tab", { name: "By timestamp" }));
+    fireEvent.click(screen.getByRole("tab", { name: "By session" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset session saved" }));
     expect(confirm).toHaveBeenLastCalledWith(
       expect.stringContaining("Clear all requests in session saved"),
@@ -99,6 +101,7 @@ describe("summary token rollups and session controls", () => {
     );
     expect(screen.getByRole("button", { name: "Delete session live" })).toBeDisabled();
     expect(api).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("fetches names only when visible and leaves inspection/export available in read-only mode", async () => {
