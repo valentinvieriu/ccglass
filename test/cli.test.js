@@ -5,14 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
+import { Store } from "../src/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const bin = path.join(__dirname, "..", "bin", "ccglass.js");
 
-function run(args, env = {}) {
+function run(args, env = {}, cwd) {
   return new Promise((resolve) => {
     execFile(process.execPath, [bin, ...args], {
       env: { ...process.env, ...env },
+      cwd,
       timeout: 5000,
     }, (err, stdout, stderr) => {
       resolve({ code: err?.code ?? 0, stdout, stderr });
@@ -109,6 +111,34 @@ test("proxy subcommand does not spawn a client (no 'command not found')", async 
   assert.match(stderr, /OPENAI_BASE_URL|--upstream/);
   // The key regression assertion: it must never have tried to spawn a client.
   assert.doesNotMatch(stderr, /command not found/);
+});
+
+test("usage output retains tokens and session rows without billing", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-usagecli-"));
+  try {
+    const store = new Store({ root, format: "anthropic" });
+    const rec = store.add({ request: { body: { model: "test-model", messages: [] } } });
+    rec.response = { status: 200, raw: JSON.stringify({
+      type: "message", role: "assistant", content: [],
+      usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 900 },
+    }) };
+    store.update(rec);
+    const text = await run(["usage", "--by-timestamp", "--dir", root], {}, root);
+    assert.equal(text.code, 0);
+    assert.match(text.stdout, /test-model/);
+    assert.match(text.stdout, /cache read\s+900\s+\(90% hit\)/);
+    assert.match(text.stdout, /by session/);
+    assert.doesNotMatch(text.stdout, /cost|usd|\$/i);
+    const json = await run(["usage", "--format", "json", "--dir", root], {}, root);
+    assert.equal(json.code, 0);
+    const usage = JSON.parse(json.stdout);
+    assert.equal(usage.totals.totalInput, 1000);
+    assert.equal("usd" in usage.totals, false);
+    assert.equal("usd" in usage.byModel[0], false);
+    assert.equal("usd" in usage.bySession[0], false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("ccglass rm deletes a session directory", async () => {

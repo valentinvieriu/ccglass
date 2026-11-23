@@ -19,21 +19,22 @@ test("normUsageReasonix maps DeepSeek cache fields", () => {
   assert.equal(u.cache_read_input_tokens, 900);
 });
 
-test("reasonix.cost uses DeepSeek v4-flash pricing", () => {
+test("reasonix.usageStats preserves fully cached input without billing fields", () => {
   const A = getAdapter("reasonix");
-  const c = A.cost("deepseek-v4-flash", {
+  const c = A.usageStats({
     prompt_tokens: 1_000_000,
     completion_tokens: 0,
     prompt_cache_hit_tokens: 1_000_000,
     prompt_cache_miss_tokens: 0,
   });
-  assert.ok(Math.abs(c.usd - 0.0028) < 1e-6);
-  assert.equal(c.cacheHitRate, 1);
+  assert.deepEqual(c, {
+    input: 0, output: 0, cacheWrite: 0, cacheRead: 1_000_000, totalInput: 1_000_000, cacheHitRate: 1,
+  });
 });
 
-test("reasonix.cost reports input as the uncached portion", () => {
+test("reasonix.usageStats reports input as the uncached portion", () => {
   const A = getAdapter("reasonix");
-  const c = A.cost("deepseek-v4-flash", {
+  const c = A.usageStats({
     prompt_tokens: 1000,
     completion_tokens: 50,
     prompt_cache_hit_tokens: 800,

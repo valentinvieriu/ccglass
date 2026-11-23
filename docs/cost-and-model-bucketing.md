@@ -1,6 +1,11 @@
 # Design: Cost & model-bucketing fixes for ccglass
 
-**Status:** Approved design, pending implementation
+**Status:** Historical design; monetary calculations are removed in this fork.
+
+The pricing and cost-output guidance below is superseded. Current adapters expose
+`usageStats(usage)` with token/cache counts only; API, CLI, MCP, and dashboard
+outputs omit monetary estimates. Model rollups sort by total input tokens.
+The stream-recovery and model-grouping background remains relevant.
 **Target:** upstream `github.com/jianshuo/ccglass`
 **Shape:** three independent commits, landed in order, each keeping `npm test` (`node --test`) green standalone.
 

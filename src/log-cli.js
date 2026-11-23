@@ -76,8 +76,8 @@ export function repack(opts) {
   process.stdout.write("ccglass: repack complete\n");
 }
 
-// `ccglass usage` — token + USD rollup across every captured session. Pretty-prints
-// totals, top models by spend, and per-session breakdown. With `--format json`, emits
+// `ccglass usage` — token rollup across every captured session. Pretty-prints
+// totals, top models by input tokens, and per-session breakdown. With `--format json`, emits
 // the raw aggregator output for piping into jq.
 export function usageCmd(opts) {
   // Resolve session names only for the `--by-session` table (not --by-timestamp,
@@ -95,7 +95,6 @@ export function usageCmd(opts) {
   }
 
   const fmt = (n) => Number(n || 0).toLocaleString();
-  const usd = (n) => `$${Number(n || 0).toFixed(4)}`;
   const pct = (r) => `${Math.round((r || 0) * 100)}%`;
   const range = [s.range.from, s.range.to].filter(Boolean).join(" → ") || "—";
 
@@ -109,15 +108,14 @@ export function usageCmd(opts) {
   out.push(`  output        ${fmt(s.totals.output)}`);
   out.push(`  cache read    ${fmt(s.totals.cacheRead)}  (${pct(s.totals.cacheHitRate)} hit)`);
   out.push(`  cache write   ${fmt(s.totals.cacheWrite)}`);
-  out.push(`  cost          ${usd(s.totals.usd)}`);
 
   if (s.byModel.length) {
     out.push("");
-    out.push("by model (sorted by spend):");
+    out.push("by model (sorted by input tokens):");
     const w = Math.max(8, ...s.byModel.map((m) => m.model.length));
-    out.push(`  ${"model".padEnd(w)}  ${"req".padStart(6)}  ${"input".padStart(10)}  ${"output".padStart(10)}  ${"cacheR".padStart(10)}  ${"cacheW".padStart(10)}  ${"cost".padStart(10)}`);
+    out.push(`  ${"model".padEnd(w)}  ${"req".padStart(6)}  ${"input".padStart(10)}  ${"output".padStart(10)}  ${"cacheR".padStart(10)}  ${"cacheW".padStart(10)}`);
     for (const m of s.byModel) {
-      out.push(`  ${m.model.padEnd(w)}  ${fmt(m.requests).padStart(6)}  ${fmt(m.input).padStart(10)}  ${fmt(m.output).padStart(10)}  ${fmt(m.cacheRead).padStart(10)}  ${fmt(m.cacheWrite).padStart(10)}  ${usd(m.usd).padStart(10)}`);
+      out.push(`  ${m.model.padEnd(w)}  ${fmt(m.requests).padStart(6)}  ${fmt(m.input).padStart(10)}  ${fmt(m.output).padStart(10)}  ${fmt(m.cacheRead).padStart(10)}  ${fmt(m.cacheWrite).padStart(10)}`);
     }
   }
 
@@ -137,11 +135,11 @@ export function usageCmd(opts) {
     const wName = showName ? Math.max(4, ...s.bySession.map((x) => nameOf(x).length)) : 0;
     // Left columns vary by mode; the numeric tail is identical for header + rows.
     const lead = (name, id) => (showName ? `${name.padEnd(wName)}  ${id.padEnd(wId)}` : id.padEnd(wId));
-    const tail = (req, input, output, cacheR, cacheW, cost) =>
-      `  ${req.padStart(6)}  ${input.padStart(10)}  ${output.padStart(10)}  ${cacheR.padStart(10)}  ${cacheW.padStart(10)}  ${cost.padStart(10)}`;
-    out.push(`  ${lead("name", "session")}${tail("req", "input", "output", "cacheR", "cacheW", "cost")}`);
+    const tail = (req, input, output, cacheR, cacheW) =>
+      `  ${req.padStart(6)}  ${input.padStart(10)}  ${output.padStart(10)}  ${cacheR.padStart(10)}  ${cacheW.padStart(10)}`;
+    out.push(`  ${lead("name", "session")}${tail("req", "input", "output", "cacheR", "cacheW")}`);
     for (const x of s.bySession) {
-      out.push(`  ${lead(nameOf(x), x.session)}${tail(fmt(x.requests), fmt(x.input), fmt(x.output), fmt(x.cacheRead), fmt(x.cacheWrite), usd(x.usd))}`);
+      out.push(`  ${lead(nameOf(x), x.session)}${tail(fmt(x.requests), fmt(x.input), fmt(x.output), fmt(x.cacheRead), fmt(x.cacheWrite))}`);
     }
   }
 

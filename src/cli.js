@@ -43,7 +43,7 @@ USAGE
   ccglass migrate               Copy ./.ccglass logs (this project only) to the global store
   ccglass repack [session]      Re-pack stored captures into the deduped v2 format
   ccglass rm <session>          Delete a session and reclaim its orphaned blobs
-  ccglass usage [--by-session|--by-timestamp] [--format json] Summarize token usage and USD cost across every session
+  ccglass usage [--by-session|--by-timestamp] [--format json] Summarize token usage across every session
   ccglass export <id> [--format raw|md|json|har]
 
 OPTIONS

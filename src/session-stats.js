@@ -1,4 +1,4 @@
-// Aggregate token/cost/cache metrics for a session's captured records.
+// Aggregate token/cache metrics for a session's captured records.
 
 import { getAdapter, detectFormat } from "./formats/index.js";
 
@@ -45,10 +45,10 @@ export function requestTiming(rec, usage = {}) {
  * only reassemble the response when the body has none.
  *
  * `preferResponse: true` resolves the reassembled *response* model first, the
- * same precedence `aggregateSessionStats` prices by (`parsed.model ||
- * body.model`). The per-session dropdown + filter use it so a gateway/Bedrock
+ * same precedence the usage rollup groups by (`parsed.model || body.model`).
+ * The per-session dropdown + filter use it so a gateway/Bedrock
  * record whose request body has no model — or a differing alias — is listed,
- * filtered, and charged under one consistent (priced) model id.
+ * and filtered under one consistent model id.
  */
 export function recordModel(rec, { preferResponse = false } = {}) {
   const body = rec.request?.body;
@@ -96,7 +96,6 @@ export function aggregateSessionStats(records, options = {}) {
   let totalInput = 0;
   let totalOutput = 0;
   let cacheRead = 0;
-  let totalUsd = 0;
   let completed = 0;
 
   for (const rec of scoped) {
@@ -105,19 +104,13 @@ export function aggregateSessionStats(records, options = {}) {
 
     const fmt = detectFormat(rec);
     const A = getAdapter(fmt);
-    const body = rec.request?.body || {};
     const parsed = resp.raw ? A.reassemble(resp.raw) : resp;
     const usage = parsed?.usage || {};
-    // Prefer the reassembled response model; the request body carries no model
-    // for Bedrock/gateway-proxied traffic, which would otherwise price at the
-    // Sonnet default tier (matches costFor in usage.js).
-    const model = parsed?.model || body.model;
-    const c = A.cost(model, usage);
+    const stats = A.usageStats(usage);
 
-    totalInput += c.totalInput ?? c.input ?? 0;
-    totalOutput += c.output ?? 0;
-    cacheRead += c.cacheRead ?? 0;
-    totalUsd += c.usd ?? 0;
+    totalInput += stats.totalInput ?? stats.input ?? 0;
+    totalOutput += stats.output ?? 0;
+    cacheRead += stats.cacheRead ?? 0;
     completed++;
   }
 
@@ -128,6 +121,5 @@ export function aggregateSessionStats(records, options = {}) {
     totalInput,
     totalOutput,
     cacheHitRate: totalInput > 0 ? cacheRead / totalInput : 0,
-    totalUsd,
   };
 }

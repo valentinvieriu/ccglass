@@ -100,7 +100,7 @@ ccglass
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jianshuo/ccglass/main/docs/demo.gif" alt="ccglass dashboard — live request capture, token/cache/cost, message history with tool calls, the agent-loop flow view, and a turn-to-turn diff" width="100%">
+  <img src="https://raw.githubusercontent.com/jianshuo/ccglass/main/docs/demo.gif" alt="ccglass dashboard — live request capture, token/cache metrics, message history with tool calls, the agent-loop flow view, and a turn-to-turn diff" width="100%">
 </p>
 
 Run with no arguments and `ccglass` asks which client to inspect:
@@ -125,7 +125,7 @@ Or name it directly: `ccglass claude`, `ccglass codex`, `ccglass deepseek`,
 `ccglass` starts a proxy, points the client at it via the right base-URL env var,
 launches it for you, and opens a dashboard where you watch every request in real
 time — the full system prompt, every tool schema, the message history,
-token/cache/cost numbers, and a turn-to-turn diff.
+token/cache numbers, and a turn-to-turn diff.
 
 ```
   ● ccglass watching Codex (OpenAI) → https://api.openai.com
@@ -291,14 +291,14 @@ When you're done, remove the proxy settings from your IDE and press `Ctrl-C` to 
   color-coded; skill calls are flagged.
 - **Turn-to-turn diff** — pick two requests, see exactly what context was added
   this turn and which blocks carry a cache breakpoint.
-- **Token / cache / cost** — exact input/output/cache tokens from the response
-  `usage`, cache-hit rate, and estimated USD per request (per-provider pricing).
+- **Token / cache metrics** — exact input/output/cache tokens from the response
+  `usage` and cache-hit rate. This fork does not calculate or display billing.
 - **Response reassembly + export** — streamed SSE rebuilt into the final message
   (`stop_reason`, tool calls, usage), for both the Anthropic and OpenAI wire
   formats; export any request to a readable **raw** HTTP transcript, Markdown,
   JSON, or HAR.
 - **Session summary** — for the selected session, the header shows rolled-up input
-  and output tokens, cache-hit %, and estimated cost.
+  and output tokens and cache-hit %.
 - **Per-model filter** — scope the request list, session summary, errors count,
   and latency trend to one model from the session (**All models** by default),
   including models seen on failed requests.
@@ -332,7 +332,7 @@ ccglass view                  # re-open the dashboard over saved logs (global + 
 ccglass migrate               # copy this project's ./.ccglass into the global store
 ccglass repack [session]      # force-migrate existing captures to content-addressed (v2) format
 ccglass rm <session>          # delete a session and reclaim its orphaned blobs
-ccglass usage [--by-session|--by-timestamp] [--format json]   # token + USD rollup; lists each session
+ccglass usage [--by-session|--by-timestamp] [--format json]   # token rollup; lists each session
 ccglass export <session>/<seq> --format raw|md|json|har   # e.g. 2026-05-25T12-00-00-000Z/0003
 ```
 

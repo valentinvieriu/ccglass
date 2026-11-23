@@ -1,6 +1,6 @@
 // Token-usage rollup across captured sessions. Walks every record under the
 // given roots once, reassembles each response via the per-format adapter, and
-// folds the resulting usage/cost into totals + per-model + per-session
+// folds the resulting token statistics into totals + per-model + per-session
 // breakdowns. Records without a parseable response.usage are counted under
 // `unmeasured` so the caller can tell aggregated numbers are a lower bound.
 
@@ -16,7 +16,6 @@ function blankBucket() {
     cacheRead: 0,
     cacheWrite: 0,
     totalInput: 0,
-    usd: 0,
   };
 }
 
@@ -25,14 +24,13 @@ function blankBucket() {
 // `totalInput` for cache-hit math rather than recomputing it from input +
 // cacheRead + cacheWrite, so the rollup stays correct no matter how each API
 // reports its raw counts.
-function addInto(bucket, cost) {
+function addInto(bucket, stats) {
   bucket.requests += 1;
-  bucket.input += cost.input || 0;
-  bucket.output += cost.output || 0;
-  bucket.cacheRead += cost.cacheRead || 0;
-  bucket.cacheWrite += cost.cacheWrite || 0;
-  bucket.totalInput += cost.totalInput || 0;
-  bucket.usd += cost.usd || 0;
+  bucket.input += stats.input || 0;
+  bucket.output += stats.output || 0;
+  bucket.cacheRead += stats.cacheRead || 0;
+  bucket.cacheWrite += stats.cacheWrite || 0;
+  bucket.totalInput += stats.totalInput || 0;
 }
 
 function deriveTotals(b) {
@@ -40,12 +38,12 @@ function deriveTotals(b) {
   return { ...b, cacheHitRate };
 }
 
-// Reassemble one record's response and ask its adapter for cost. Returns null
+// Reassemble one record's response and ask its adapter for token statistics. Returns null
 // when the record has no parseable usage (in-flight, errored, or non-LLM).
 // The model comes from the reassembled response (the source of truth) rather
 // than the request body, which is empty for Bedrock/gateway-proxied traffic
 // and would otherwise bucket every such request under "unknown".
-function costFor(rec) {
+function usageFor(rec) {
   const adapter = getAdapter(detectFormat(rec));
   const resp = rec.response?.raw ? adapter.reassemble(rec.response.raw) : rec.response || {};
   const usage = resp?.usage;
@@ -53,7 +51,7 @@ function costFor(rec) {
     return null;
   }
   const model = resp?.model || rec.request?.body?.model || "unknown";
-  return { cost: adapter.cost(model, usage), model };
+  return { stats: adapter.usageStats(usage), model };
 }
 
 // `names: true` resolves each session's human-readable title from the agent's
@@ -89,15 +87,15 @@ export function summarizeUsage(roots, { names = false } = {}) {
         if (from == null || rec.ts < from) from = rec.ts;
         if (to == null || rec.ts > to) to = rec.ts;
       }
-      const res = costFor(rec);
+      const res = usageFor(rec);
       if (!res) { unmeasured += 1; continue; }
-      const { cost, model } = res;
+      const { stats, model } = res;
 
-      addInto(totals, cost);
-      addInto(sessionBucket, cost);
+      addInto(totals, stats);
+      addInto(sessionBucket, stats);
 
       if (!byModelMap.has(model)) byModelMap.set(model, blankBucket());
-      addInto(byModelMap.get(model), cost);
+      addInto(byModelMap.get(model), stats);
     }
 
     bySession.push({
@@ -112,7 +110,7 @@ export function summarizeUsage(roots, { names = false } = {}) {
 
   const byModel = [...byModelMap.entries()]
     .map(([model, b]) => ({ model, ...deriveTotals(b) }))
-    .sort((a, b) => b.usd - a.usd);
+    .sort((a, b) => b.totalInput - a.totalInput || a.model.localeCompare(b.model));
 
   return {
     sessionCount: bySession.length,
