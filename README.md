@@ -19,9 +19,58 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
 - Reverse-proxy streaming honors downstream backpressure and cancels upstream
   work when clients disconnect. Interrupted streams are recorded as errors and
   close the transport rather than appending error text to a started response.
+- The dashboard's **Start session** / **Stop session** controls create separate
+  recordings without interrupting forwarding. Recording begins automatically;
+  stop before starting a fresh session. Saved recordings remain selectable and
+  can also be opened in **Summary > by session**. **Reset session** clears only
+  the selected recording after confirmation, preserving its recording/stopped
+  state and other sessions. Pending responses cannot restore cleared requests.
+  In-flight requests remain assigned to the session where they were captured.
+  **Delete** in the session list permanently removes a stopped session after
+  confirmation; recording sessions cannot be deleted. Other sessions and live
+  forwarding are unaffected, and late responses cannot restore deleted captures.
+  Read-only dashboards hide recording/reset/delete controls. Docker's tmpfs storage
+  still wipes all sessions when the container stops or restarts.
+- **Export session**, also available per row in **Summary > by session**,
+  downloads a self-contained JSON file with `session`, `exportedAt`, and full
+  `entries` (reconstructed request bodies, captured headers, raw responses,
+  errors, and timing metadata). It ignores UI filters and works in read-only
+  mode. Active sessions export a snapshot, including pending requests with a
+  null response. Stop capture and wait for pending responses before exporting
+  a completed recording. Existing header redaction is preserved; other captured
+  data may contain secrets, so sanitize exports before sharing them.
 
-Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js`
+Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js test/web-live.test.js`
 to check these changes, or `npm test` for the complete upstream suite.
+
+### Local development
+
+From this checkout (`vendor/ccglass` in `debug-proxy`), run:
+
+```sh
+vp install
+vp run dev
+```
+
+This starts the proxy at **http://127.0.0.1:6656** and the dashboard at
+**http://127.0.0.1:6657**, forwarding to **http://127.0.0.1:6655** without Docker.
+Keep the host API running and point clients at
+**http://127.0.0.1:6656/openai/v1**. Stop the Docker stack first if it uses the
+same ports. Browser requests from `http://localhost:5173` are allowed by default.
+
+Node watch mode restarts the server when imported server source changes.
+Refresh the browser to see edits to `web/`; those files are served directly.
+Captures are saved in the ignored `.ccglass/` directory and survive restarts.
+Press Ctrl-C to stop. This command requires Node 18.11 or later.
+
+Override defaults with shell environment variables (`CCGLASS_UPSTREAM`,
+`CCGLASS_PROXY_PORT`, `CCGLASS_DASHBOARD_PORT`, `CCGLASS_CORS_ORIGINS`) or CLI
+options, for example:
+
+```sh
+vp run dev --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
+CCGLASS_CORS_ORIGINS='*' vp run dev
+```
 
 **See exactly what your coding agent sends to the model.** A lightweight
 local logging reverse-proxy + web dashboard for **Claude Code, Codex,

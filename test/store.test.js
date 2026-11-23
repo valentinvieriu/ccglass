@@ -15,6 +15,104 @@ import {
   parseEntryId,
   localTimestamp,
 } from "../src/store.js";
+import { blobRef, blobPath } from "../src/blobs.js";
+
+test("Stop/Start preserves previous sessions and routes late responses to their original session", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-sessions-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const store = new Store({ root });
+  const first = store.add({ request: { body: { model: "first" } } });
+  store.stop();
+  assert.equal(store.add({ request: { body: "not recorded" } }), null);
+  store.start();
+  const second = store.add({ request: { body: { model: "second" } } });
+  assert.notEqual(first.session, second.session);
+  first.response = { status: 200, raw: "late first response" };
+  store.update(first);
+  assert.equal(loadSession(root, first.session)[0].response.raw, "late first response");
+  assert.equal(loadSession(root, second.session)[0].request.body.model, "second");
+  assert.deepEqual(store.entries, [second]);
+  assert.equal(store.get(first.id).response.raw, "late first response");
+  store.start();
+  assert.equal(store.sessionId, second.session);
+  assert.equal(listSessions(root).length, 2);
+});
+
+test("session lists exclude nested capture storage and certificate directories", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-session-dirs-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const store = new Store({ root: path.join(root, "sessions") });
+  fs.mkdirSync(path.join(root, "ca"));
+  assert.deepEqual(listSessionsMulti([store.root, root]), [store.sessionId]);
+});
+
+test("Reset clears only the selected session, collects orphaned blobs and ignores late responses", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-reset-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const store = new Store({ root });
+  const shared = { role: "user", content: "shared message" };
+  const unique = { role: "user", content: "clear this message" };
+  const first = store.add({ request: { body: { messages: [shared, unique] } } });
+  store.stop();
+  store.start();
+  const second = store.add({ request: { body: { messages: [shared] } } });
+  store.reset(first.session);
+  first.response = { status: 200, raw: "late" };
+  store.update(first);
+  assert.deepEqual(loadSession(root, first.session), []);
+  assert.deepEqual(store.entries, [second]);
+  assert.equal(store.recording, true);
+  assert.equal(store.get(first.id), null);
+  assert.ok(fs.existsSync(blobPath(root, blobRef(shared).ref)));
+  assert.equal(fs.existsSync(blobPath(root, blobRef(unique).ref)), false);
+
+  store.reset(second.session);
+  const third = store.add({ request: { body: "fresh" } });
+  second.response = { status: 200, raw: "also late" };
+  store.update(second);
+  assert.deepEqual(loadSession(root, second.session).map((r) => r.id), [third.id]);
+  assert.notEqual(second.id, third.id);
+  store.stop();
+  store.reset(third.session);
+  assert.equal(store.recording, false);
+  assert.deepEqual(store.entries, []);
+  assert.equal(listSessions(root).length, 2);
+  assert.throws(() => store.reset("../"), /session not found/);
+});
+
+test("Delete rejects recording sessions, preserves other captures and prevents late resurrection", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-delete-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const store = new Store({ root });
+  const shared = { role: "user", content: "shared" };
+  const unique = { role: "user", content: "deleted" };
+  const first = store.add({ request: { body: { messages: [shared, unique] } } });
+  assert.throws(() => store.deleteSession(first.session), /Stop this session/);
+  assert.equal(store.get(first.id), first);
+  store.stop();
+  store.start();
+  const second = store.add({ request: { body: { messages: [shared] } } });
+  store.deleteSession(first.session);
+  first.response = { status: 200, raw: "late response" };
+  store.update(first);
+  assert.equal(fs.existsSync(path.join(root, first.session)), false);
+  assert.equal(store.get(first.id), null);
+  assert.equal(fs.existsSync(blobPath(root, blobRef(unique).ref)), false);
+  assert.ok(fs.existsSync(blobPath(root, blobRef(shared).ref)));
+  assert.deepEqual(store.entries, [second]);
+  assert.equal(store.recording, true);
+  store.stop();
+  store.deleteSession(second.session);
+  second.response = { status: 200 };
+  store.update(second);
+  assert.deepEqual(listSessions(root), []);
+  assert.equal(store.sessionId, null);
+  assert.deepEqual(store.entries, []);
+  assert.equal(store.recording, false);
+  assert.throws(() => store.deleteSession("../"), /session not found/);
+  store.start();
+  assert.equal(store.add({ request: { body: "new capture" } }).seq, 1);
+});
 
 test("Store masks auth, persists, and reloads from disk", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-"));

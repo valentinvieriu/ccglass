@@ -51,6 +51,7 @@ body {
 }
 header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
@@ -73,6 +74,9 @@ select, button {
 }
 select:hover, button:hover { border-color: var(--accent); }
 button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+#session { max-width: 19rem; }
+#captureError { color: var(--del); font-size: 12px; }
 .theme-select { min-width: 5.5rem; font-size: 12px; }
 .model-filter {
   max-width: 11rem; font-size: 12px;

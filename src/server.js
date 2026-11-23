@@ -6,7 +6,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { summarize, listSessionsMulti, loadSessionMulti, readEntryByIdMulti } from "./store.js";
+import { summarize, listSessions, listSessionsMulti, loadSessionMulti, readEntryByIdMulti } from "./store.js";
 import { getAdapter, detectFormat } from "./formats/index.js";
 import { aggregateSessionStats, latencyMs, requestTiming, sessionModels } from "./session-stats.js";
 import { diffBlockLists } from "./diff.js";
@@ -29,6 +29,10 @@ export function createServer({ roots, store }) {
     };
     store.on("entry", push);
     store.on("update", push);
+    store.on("session", (event) => {
+      const data = `event: sessions\ndata: ${JSON.stringify({ ...apiSessions(roots, store), reset: event.type === "reset" ? event.session : null })}\n\n`;
+      for (const res of sseClients) res.write(data);
+    });
   }
 
   return http.createServer((req, res) => {
@@ -45,14 +49,41 @@ export function createServer({ roots, store }) {
     const p = url.pathname;
 
     try {
+      if (["/api/sessions/start", "/api/sessions/stop", "/api/sessions/reset", "/api/sessions/delete"].includes(p)) {
+        if (req.method !== "POST") {
+          res.setHeader("allow", "POST");
+          return json(res, { error: "POST required" }, 405);
+        }
+        if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {
+          return json(res, { error: "same-origin request required" }, 403);
+        }
+        if (!store) return json(res, { error: "capture controls unavailable in read-only mode" }, 409);
+        if (p.endsWith("/reset") || p.endsWith("/delete")) {
+          const session = url.searchParams.get("session");
+          if (!listSessions(store.root).includes(session)) return json(res, { error: "session not found" }, 404);
+          if (p.endsWith("/delete")) {
+            if (store.recording && session === store.sessionId) return json(res, { error: "Stop this session before deleting it" }, 409);
+            store.deleteSession(session);
+          } else store.reset(session);
+        } else if (p.endsWith("/start")) store.start();
+        else store.stop();
+        return json(res, apiSessions(roots, store));
+      }
       if (p === "/api/sessions") return json(res, apiSessions(roots, store));
+      if (p === "/api/sessions/export") {
+        if (req.method !== "GET") {
+          res.setHeader("allow", "GET");
+          return json(res, { error: "GET required" }, 405);
+        }
+        return apiSessionExport(roots, store, url, res);
+      }
       if (p === "/api/requests") return json(res, apiRequests(roots, store, url));
       if (p === "/api/session-stats") return json(res, apiSessionStats(roots, store, url));
       if (p === "/api/usage") return json(res, summarizeUsage(roots, { names: url.searchParams.get("names") === "1" }));
       if (p.startsWith("/api/request/")) return json(res, apiRequest(roots, store, decodeURIComponent(p.slice("/api/request/".length))));
       if (p === "/api/diff") return json(res, apiDiff(roots, store, url));
       if (p === "/api/export") return apiExport(roots, store, url, res);
-      if (p === "/api/stream") return stream(res, sseClients);
+      if (p === "/api/stream") return stream(res, sseClients, apiSessions(roots, store));
       return serveStatic(p, res);
     } catch (e) {
       json(res, { error: e.message }, 500);
@@ -71,7 +102,7 @@ function getEntry(roots, store, id) {
 }
 
 function apiSessions(roots, store) {
-  return { sessions: listSessionsMulti(roots), live: store ? store.sessionId : null };
+  return { sessions: listSessionsMulti(roots), live: store?.recording ? store.sessionId : null, controllable: !!store };
 }
 
 function sessionRecords(roots, store, session) {
@@ -141,6 +172,23 @@ function apiExport(roots, store, url, res) {
   return res.end(body);
 }
 
+function apiSessionExport(roots, store, url, res) {
+  const session = url.searchParams.get("session");
+  if (!session) return json(res, { error: "session required" }, 400);
+  if (!listSessionsMulti(roots).includes(session)) return json(res, { error: "session not found" }, 404);
+  const body = JSON.stringify({
+    session,
+    exportedAt: new Date().toISOString(),
+    entries: sessionRecords(roots, store, session),
+  }, null, 2);
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    ...attach("session-" + encodeURIComponent(session), "json"),
+  });
+  return res.end(body);
+}
+
 // ---- helpers -------------------------------------------------------------
 
 function json(res, obj, code = 200) {
@@ -148,9 +196,10 @@ function json(res, obj, code = 200) {
   res.end(JSON.stringify(obj));
 }
 
-function stream(res, clients) {
+function stream(res, clients, sessions) {
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
   res.write(": connected\n\n");
+  res.write(`event: sessions\ndata: ${JSON.stringify(sessions)}\n\n`);
   clients.add(res);
   res.on("close", () => clients.delete(res));
 }

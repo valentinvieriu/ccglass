@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { Store } from '../src/store.js';
 import { createProxy } from '../src/proxy.js';
 import { createServer } from '../src/server.js';
+import { loadSession } from '../src/store.js';
 
 async function listen(t, server) {
   server.listen(0, '127.0.0.1');
@@ -24,6 +25,157 @@ function store(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return new Store({ root, format: 'openai' });
 }
+
+test('dashboard capture controls preserve history and forward unrecorded traffic while stopped', async (t) => {
+  const captures = store(t);
+  const upstream = await listen(t, http.createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"ok":true}');
+  }));
+  const proxy = await listen(t, createProxy({ upstream, store: captures }));
+  const dashboard = await listen(t, createServer({ roots: [captures.root], store: captures }));
+  const control = async (action, session = '') => {
+    const response = await fetch(`${dashboard}/api/sessions/${action}?session=${encodeURIComponent(session)}`, {
+      method: 'POST', headers: { origin: dashboard },
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const first = captures.sessionId;
+  assert.equal(await (await fetch(proxy)).text(), '{"ok":true}');
+  assert.equal((await control('stop')).live, null);
+  assert.equal(await (await fetch(proxy)).text(), '{"ok":true}');
+  assert.equal(captures.entries.length, 1);
+  const second = (await control('start')).live;
+  assert.notEqual(first, second);
+  assert.equal(await (await fetch(proxy)).text(), '{"ok":true}');
+  const saved = await (await fetch(`${dashboard}/api/requests?session=${first}`)).json();
+  assert.equal(saved.entries.length, 1);
+  const cleared = await control('reset', first);
+  assert.equal(cleared.live, second);
+  assert.equal(cleared.sessions.length, 2);
+  assert.deepEqual(loadSession(captures.root, first), []);
+  assert.equal(captures.entries.length, 1);
+});
+
+test('capture controls reject unsafe methods, cross-origin calls, unknown sessions and read-only mode', async (t) => {
+  const captures = store(t);
+  const dashboard = await listen(t, createServer({ roots: [captures.root], store: captures }));
+  for (const action of ['start', 'stop', 'reset', 'delete']) {
+    const get = await fetch(`${dashboard}/api/sessions/${action}`);
+    assert.equal(get.status, 405);
+    assert.equal(get.headers.get('allow'), 'POST');
+    await get.text();
+    const crossOrigin = await fetch(`${dashboard}/api/sessions/${action}`, {
+      method: 'POST', headers: { origin: 'https://other.example' },
+    });
+    assert.equal(crossOrigin.status, 403);
+    await crossOrigin.text();
+  }
+  assert.equal(captures.recording, true);
+  const missing = await fetch(`${dashboard}/api/sessions/reset?session=..%2F`, { method: 'POST' });
+  assert.equal(missing.status, 404);
+  await missing.text();
+  const readOnly = await listen(t, createServer({ roots: [captures.root] }));
+  const rejected = await fetch(`${readOnly}/api/sessions/start`, { method: 'POST' });
+  assert.equal(rejected.status, 409);
+  assert.match((await rejected.json()).error, /read-only/);
+  const readOnlyDelete = await fetch(`${readOnly}/api/sessions/delete?session=${captures.sessionId}`, { method: 'POST' });
+  assert.equal(readOnlyDelete.status, 409);
+  await readOnlyDelete.text();
+});
+
+test('Delete API rejects an active session and removes only a stopped session while forwarding continues', async (t) => {
+  const captures = store(t);
+  const original = captures.sessionId;
+  captures.add({ request: { body: 'saved request' } });
+  const upstream = await listen(t, http.createServer((req, res) => res.end('forwarded')));
+  const proxy = await listen(t, createProxy({ upstream, store: captures }));
+  const dashboard = await listen(t, createServer({ roots: [captures.root], store: captures }));
+  const remove = (session) => fetch(`${dashboard}/api/sessions/delete?session=${encodeURIComponent(session)}`, {
+    method: 'POST', headers: { origin: dashboard },
+  });
+  const rejected = await remove(original);
+  assert.equal(rejected.status, 409);
+  assert.match((await rejected.json()).error, /Stop this session/);
+  assert.equal(captures.entries.length, 1);
+  captures.stop();
+  captures.start();
+  const active = captures.sessionId;
+  const deleted = await remove(original);
+  assert.equal(deleted.status, 200);
+  const sessions = await deleted.json();
+  assert.equal(sessions.live, active);
+  assert.deepEqual(sessions.sessions, [active]);
+  const exportDeleted = await fetch(`${dashboard}/api/sessions/export?session=${original}`);
+  assert.equal(exportDeleted.status, 404);
+  await exportDeleted.text();
+  assert.equal(await (await fetch(proxy)).text(), 'forwarded');
+  assert.equal(captures.entries.length, 1);
+  const missing = await remove('../');
+  assert.equal(missing.status, 404);
+  await missing.text();
+});
+
+test('SSE publishes recording transitions and selected-session reset', async (t) => {
+  const captures = store(t);
+  const dashboard = await listen(t, createServer({ roots: [captures.root], store: captures }));
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const response = await fetch(`${dashboard}/api/stream`, { signal: controller.signal });
+  const reader = response.body.getReader();
+  let buffer = '';
+  const nextEvent = async () => {
+    for (;;) {
+      const end = buffer.indexOf('\n\n');
+      if (end >= 0) {
+        const event = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        if (event.startsWith('event: sessions\n')) return JSON.parse(event.split('\ndata: ')[1]);
+      } else {
+        const { value, done } = await reader.read();
+        assert.equal(done, false);
+        buffer += new TextDecoder().decode(value);
+      }
+    }
+  };
+  assert.equal((await nextEvent()).live, captures.sessionId);
+  captures.stop();
+  assert.equal((await nextEvent()).live, null);
+  captures.start();
+  const started = await nextEvent();
+  assert.equal(started.sessions.length, 2);
+  assert.equal(started.live, captures.sessionId);
+  captures.reset(captures.sessionId);
+  assert.equal((await nextEvent()).reset, captures.sessionId);
+  const session = captures.sessionId;
+  captures.stop();
+  assert.equal((await nextEvent()).live, null);
+  captures.deleteSession(session);
+  const deleted = await nextEvent();
+  assert.equal(deleted.sessions.includes(session), false);
+  assert.equal(deleted.live, null);
+  controller.abort();
+});
+
+test('a response finishing after Stop/Start stays in the original capture', async (t) => {
+  const captures = store(t);
+  let finish;
+  const upstream = await listen(t, http.createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('data: first\n\n');
+    finish = () => res.end('data: done\n\n');
+  }));
+  const proxy = await listen(t, createProxy({ upstream, store: captures }));
+  const original = captures.sessionId;
+  const response = await fetch(proxy);
+  captures.stop();
+  captures.start();
+  finish();
+  assert.equal(await response.text(), 'data: first\n\ndata: done\n\n');
+  assert.equal(captures.entries.length, 0);
+  assert.equal(loadSession(captures.root, original)[0].response.raw, 'data: first\n\ndata: done\n\n');
+});
 
 test('forwarding preserves path, query, auth, body, status and streaming', async (t) => {
   const captures = store(t);

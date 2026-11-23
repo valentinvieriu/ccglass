@@ -66,8 +66,159 @@ function loadApp() {
   const source = fs.readFileSync(new URL("../web/app.js", import.meta.url), "utf8")
     .replace(/\nloadSessions\(\)\.then\(connectStream\);\s*$/, "\n");
   vm.runInContext(source, context);
-  return { context, liveBody };
+  return { context, liveBody, elements };
 }
+
+test("capture controls show recording state and saved-session replay", () => {
+  const { context, elements } = loadApp();
+  context.applySessions({ sessions: ["new", "old"], live: "new", controllable: true });
+  assert.equal(elements.get("#startSession").disabled, true);
+  assert.equal(elements.get("#stopSession").disabled, false);
+  vm.runInContext('state.session = "old"; state.selected = LIVE;', context);
+  context.renderList();
+  assert.match(textOf(elements.get("#list")), /Session replay/);
+  assert.doesNotMatch(textOf(elements.get("#list")), /Live stream/);
+  context.applySessions({ sessions: ["new", "old"], live: null, controllable: true });
+  assert.equal(elements.get("#session").value, "old");
+  assert.equal(elements.get("#startSession").disabled, false);
+  assert.equal(elements.get("#stopSession").disabled, true);
+  assert.equal(elements.get("#live").textContent, "stopped");
+  context.applySessions({ sessions: ["old"], live: null, controllable: false });
+  assert.equal(elements.get("#resetSession").hidden, true);
+});
+
+test("session management exposes Open, Export and Reset while read-only summaries hide Reset", () => {
+  const { context, elements } = loadApp();
+  const rows = [{ session: "old", requests: 1, entries: 2 }];
+  vm.runInContext('state.controllable = true;', context);
+  const controls = context.bySessionHtml(rows);
+  assert.match(controls, /data-session-action="open"/);
+  assert.match(controls, /data-session-action="reset"/);
+  assert.match(controls, /data-session-action="export"/);
+  assert.match(controls, /data-session-action="delete"/);
+  assert.match(controls, /saved/);
+  vm.runInContext('state.controllable = false;', context);
+  assert.doesNotMatch(context.bySessionHtml(rows), /data-session-action="reset"/);
+  assert.doesNotMatch(context.bySessionHtml(rows), /data-session-action="delete"/);
+  assert.match(context.bySessionHtml(rows), /data-session-action="export"/);
+  context.applySessions({ sessions: ["old"], live: null, controllable: false });
+  assert.equal(elements.get("#exportSession").disabled, false);
+  context.applySessions({ sessions: [], live: null, controllable: false });
+  assert.equal(elements.get("#exportSession").disabled, true);
+});
+
+test("Delete is disabled for the recording session but available for stopped sessions", () => {
+  const { context } = loadApp();
+  context.applySessions({ sessions: ["live", "saved"], live: "live", controllable: true });
+  const html = context.bySessionHtml([{ session: "live" }, { session: "saved" }]);
+  assert.match(html, /data-session-action="delete" data-session="live"[^>]* disabled>Delete/);
+  assert.match(html, /data-session-action="delete" data-session="saved"[^>]*>Delete/);
+  assert.doesNotMatch(html, /data-session-action="delete" data-session="saved"[^>]* disabled/);
+});
+
+test("confirmed deletion of the last selected session clears stale details and shows an empty state", async () => {
+  const { context, elements } = loadApp();
+  context.applySessions({ sessions: ["saved"], live: null, controllable: true });
+  vm.runInContext('state.entries = [{id: "saved/1"}]; state.selected = "saved/1";', context);
+  context.window.confirm = () => false;
+  context.fetch = () => { throw new Error("must not delete without confirmation"); };
+  await context.changeCapture("delete", "saved");
+  assert.equal(vm.runInContext("state.session", context), "saved");
+  context.window.confirm = (message) => {
+    assert.match(message, /Permanently delete session saved/);
+    return true;
+  };
+  context.fetch = async (url, options) => {
+    assert.equal(url, "/api/sessions/delete?session=saved");
+    assert.equal(options.method, "POST");
+    return { ok: true, json: async () => ({ sessions: [], live: null, controllable: true }) };
+  };
+  await context.changeCapture("delete", "saved");
+  assert.equal(vm.runInContext("state.session", context), null);
+  assert.equal(vm.runInContext("state.entries.length", context), 0);
+  assert.match(elements.get("#detail").innerHTML, /No sessions yet/);
+  assert.equal(elements.get("#exportSession").disabled, true);
+});
+
+test("deletion in another tab switches away from the removed session and discards its stale entries", async () => {
+  const { context } = loadApp();
+  context.applySessions({ sessions: ["saved", "recording"], live: "recording", controllable: true });
+  vm.runInContext('state.session = "saved"; state.entries = [{id: "saved/1"}]; state.selected = "saved/1";', context);
+  let onSessions;
+  context.EventSource = class {
+    addEventListener(name, callback) { if (name === "sessions") onSessions = callback; }
+  };
+  context.URLSearchParams = URLSearchParams;
+  context.api = async (url) => url.startsWith("/api/requests") ? { entries: [] } : { error: "no measured entries" };
+  context.connectStream();
+  await onSessions({ data: JSON.stringify({ sessions: ["recording"], live: "recording", controllable: true }) });
+  assert.equal(vm.runInContext("state.session", context), "recording");
+  assert.equal(vm.runInContext("state.entries.length", context), 0);
+  assert.equal(vm.runInContext("state.selected", context), "__live__");
+});
+
+test("Export downloads the chosen session and releases its temporary URL", async () => {
+  const { context } = loadApp();
+  const blob = { data: "whole session" };
+  let link;
+  let removed = false;
+  let revoked;
+  context.fetch = async (url) => {
+    assert.equal(url, "/api/sessions/export?session=saved-session");
+    return { ok: true, blob: async () => blob };
+  };
+  context.URL = {
+    createObjectURL(value) { assert.equal(value, blob); return "blob:session-export"; },
+    revokeObjectURL(value) { revoked = value; },
+  };
+  context.setTimeout = (fn) => fn();
+  context.document.createElement = (tag) => {
+    const element = new FakeElement(tag);
+    element.click = () => { link = element; };
+    element.remove = () => { removed = true; };
+    return element;
+  };
+  await context.exportSession("saved-session");
+  assert.equal(link.download, "ccglass-session-saved-session.json");
+  assert.equal(link.href, "blob:session-export");
+  assert.equal(removed, true);
+  assert.equal(revoked, "blob:session-export");
+});
+
+test("Export failures show an error instead of downloading an error response", async () => {
+  const { context, elements } = loadApp();
+  context.fetch = async () => ({ ok: false, json: async () => ({ error: "session not found" }) });
+  context.URL = { createObjectURL() { throw new Error("must not download on failure"); } };
+  await context.exportSession("missing-session");
+  assert.equal(elements.get("#captureError").hidden, false);
+  assert.equal(elements.get("#captureError").textContent, "session not found");
+});
+
+test("the stream toolbar exports the displayed saved session rather than the recording session", async () => {
+  const { context, elements } = loadApp();
+  vm.runInContext('state.session = "saved-session"; state.live = "recording-session"; state.selected = LIVE;', context);
+  let exported;
+  context.exportSession = (session) => { exported = session; };
+  await context.renderLive();
+  elements.get("#liveExportSession").onclick();
+  assert.equal(exported, "saved-session");
+});
+
+test("Reset requires confirmation and displays API errors without claiming success", async () => {
+  const { context, elements } = loadApp();
+  context.window.confirm = () => false;
+  context.fetch = () => { throw new Error("must not request after cancellation"); };
+  await context.changeCapture("reset", "old");
+  context.window.confirm = () => true;
+  context.fetch = async (url, options) => {
+    assert.equal(url, "/api/sessions/reset?session=old");
+    assert.equal(options.method, "POST");
+    return { ok: false, json: async () => ({ error: "reset failed" }) };
+  };
+  await context.changeCapture("reset", "old");
+  assert.equal(elements.get("#captureError").hidden, false);
+  assert.equal(elements.get("#captureError").textContent, "reset failed");
+});
 
 test("Codex live stream omits request-side prompt/context", () => {
   const { context, liveBody } = loadApp();

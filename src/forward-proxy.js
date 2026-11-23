@@ -144,7 +144,7 @@ function forwardRequest(host, port, reqBuf, headers, bodyStart, tlsClient, store
       body,
     },
   });
-  rec.startedAt = Date.now();
+  if (rec) rec.startedAt = Date.now();
 
   // Connect to real upstream
   const upstream = tls.connect({ host, port, servername: host }, () => {
@@ -163,6 +163,7 @@ function forwardRequest(host, port, reqBuf, headers, bodyStart, tlsClient, store
   function finalize() {
     if (finished) return;
     finished = true;
+    if (!rec) return;
     const doneAt = Date.now();
     rec.response = {
       status: parser.status,
@@ -179,7 +180,7 @@ function forwardRequest(host, port, reqBuf, headers, bodyStart, tlsClient, store
     // Forward verbatim — do not touch this path.
     tlsClient.write(chunk);
     // Feed a copy to the side-channel parser.
-    if (parser.feed(chunk)) finalize();
+    if (rec && parser.feed(chunk)) finalize();
   });
 
   upstream.on("end", () => {
@@ -189,7 +190,7 @@ function forwardRequest(host, port, reqBuf, headers, bodyStart, tlsClient, store
 
   upstream.on("error", (e) => {
     tlsClient.end();
-    if (!finished) {
+    if (!finished && rec) {
       finished = true;
       rec.response = { error: e.message, finishedAt: Date.now() };
       store.update(rec);

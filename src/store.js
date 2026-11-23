@@ -29,11 +29,61 @@ export class Store extends EventEmitter {
     this.root = root;
     this.redact = redact;
     this.format = format;
-    this.sessionId = localSessionId();
-    this.sessionDir = path.join(root, this.sessionId);
-    fs.mkdirSync(this.sessionDir, { recursive: true });
     this.entries = [];
     this.seq = 0;
+    this.recording = false;
+    this.generations = new Map();
+    this.recordGenerations = new WeakMap();
+    fs.mkdirSync(root, { recursive: true });
+    this.start();
+  }
+
+  start() {
+    if (this.recording) return;
+    const base = localSessionId();
+    let session = base;
+    for (let n = 1; fs.existsSync(path.join(this.root, session)) || this.generations.has(session); n++) session = `${base}-${n}`;
+    const dir = path.join(this.root, session);
+    fs.mkdirSync(dir);
+    this.sessionId = session;
+    this.sessionDir = dir;
+    this.entries = [];
+    this.seq = 0;
+    this.recording = true;
+    this.emit("session", { type: "start", session });
+  }
+
+  stop() {
+    if (!this.recording) return;
+    this.recording = false;
+    this.emit("session", { type: "stop", session: this.sessionId });
+  }
+
+  reset(session) {
+    if (!listSessions(this.root).includes(session)) throw new Error("session not found");
+    const dir = path.join(this.root, session);
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+      fs.unlinkSync(path.join(dir, file));
+    }
+    this.generations.set(session, (this.generations.get(session) || 0) + 1);
+    if (session === this.sessionId) this.entries = [];
+    gcBlobs(this.root, listSessions, (root, name) => path.join(root, name));
+    this.emit("session", { type: "reset", session });
+  }
+
+  deleteSession(session) {
+    if (!listSessions(this.root).includes(session)) throw new Error("session not found");
+    if (this.recording && session === this.sessionId) throw new Error("Stop this session before deleting it");
+    fs.rmSync(path.join(this.root, session), { recursive: true });
+    this.generations.set(session, (this.generations.get(session) || 0) + 1);
+    if (session === this.sessionId) {
+      this.sessionId = null;
+      this.sessionDir = null;
+      this.entries = [];
+      this.seq = 0;
+    }
+    gcBlobs(this.root, listSessions, (root, name) => path.join(root, name));
+    this.emit("session", { type: "delete", session });
   }
 
   _maskHeaders(h) {
@@ -46,12 +96,13 @@ export class Store extends EventEmitter {
     return c;
   }
 
-  _file(seq) {
-    return path.join(this.sessionDir, `${pad(seq)}.json`);
+  _file(rec) {
+    return path.join(this.root, rec.session, `${pad(rec.seq)}.json`);
   }
 
   // Record a request (response filled in later via update()).
   add({ request }) {
+    if (!this.recording) return null;
     const seq = ++this.seq;
     const rec = {
       id: `${this.sessionId}/${pad(seq)}`,
@@ -62,6 +113,7 @@ export class Store extends EventEmitter {
       request: { ...request, headers: this._maskHeaders(request.headers) },
       response: null,
     };
+    this.recordGenerations.set(rec, this.generations.get(rec.session) || 0);
     this._persist(rec);
     this.entries.push(rec);
     this.emit("entry", rec);
@@ -69,6 +121,8 @@ export class Store extends EventEmitter {
   }
 
   update(rec) {
+    // Late responses must not resurrect requests from reset or deleted sessions.
+    if (this.recordGenerations.get(rec) !== (this.generations.get(rec.session) || 0)) return;
     this._persist(rec);
     this.emit("update", rec);
   }
@@ -76,7 +130,7 @@ export class Store extends EventEmitter {
   // Write the v2 manifest (request content split into content-addressed blobs).
   _persist(rec) {
     const manifest = packRecord(this.root, rec);
-    fs.writeFileSync(this._file(rec.seq), JSON.stringify(manifest, null, 2));
+    fs.writeFileSync(this._file(rec), JSON.stringify(manifest, null, 2));
   }
 
   list() {
@@ -127,7 +181,7 @@ export function listSessions(root) {
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name !== "blobs")
+    .filter((d) => d.isDirectory() && !["blobs", "sessions", "ca"].includes(d.name))
     .map((d) => d.name)
     .sort()
     .reverse();

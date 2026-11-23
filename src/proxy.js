@@ -59,13 +59,15 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
         },
       });
       const startedAt = Date.now();
-      rec.startedAt = startedAt;
+      if (rec) rec.startedAt = startedAt;
       let finished = false;
       const fail = (error) => {
         if (finished) return;
         finished = true;
-        rec.response = { error: error.message, finishedAt: Date.now() };
-        store.update(rec);
+        if (rec) {
+          rec.response = { error: error.message, finishedAt: Date.now() };
+          store.update(rec);
+        }
         if (res.destroyed) return;
         if (res.headersSent) {
           res.destroy(error);
@@ -108,7 +110,7 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
           let firstByteAt;
           proxyRes.on("data", (c) => {
             if (firstByteAt == null) firstByteAt = Date.now();
-            respChunks.push(c);
+            if (rec) respChunks.push(c);
             if (!res.write(c)) {
               proxyRes.pause();
               res.once("drain", () => proxyRes.resume());
@@ -118,6 +120,7 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
             if (finished) return;
             finished = true;
             res.end();
+            if (!rec) return;
             const doneAt = Date.now();
             rec.response = {
               status: proxyRes.statusCode,

@@ -12,8 +12,13 @@
   <body>
     <header>
       <span class="logo">● ccglass</span>
-      <select id="session"></select>
-      <span id="live" class="badge">live</span>
+      <select id="session" aria-label="Captured session" title="Choose a recording to inspect"></select>
+      <button id="startSession" title="Start a new recording; previous sessions are kept" hidden>Start session</button>
+      <button id="stopSession" title="Stop recording new requests; proxy forwarding continues" hidden>Stop session</button>
+      <button id="resetSession" title="Clear requests from the selected session only" hidden>Reset session</button>
+      <button id="exportSession" title="Download the entire selected session as JSON; captures may contain sensitive data" disabled>Export session</button>
+      <span id="live" class="badge" role="status">live</span>
+      <span id="captureError" role="alert" hidden></span>
       <span class="spacer"></span>
       <select id="modelFilter" class="model-filter" title="Filter stats &amp; latency by model" hidden>
         <option value="all">All models</option>

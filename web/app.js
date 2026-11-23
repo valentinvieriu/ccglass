@@ -46,6 +46,7 @@ const LIVE = "__live__"; // sentinel value for state.selected meaning "live stre
 
 const state = {
   session: null, live: null, entries: [], sessionStats: null, sessionModels: [],
+  controllable: false, captureBusy: false, liveRenderVersion: 0, sessionVersion: 0,
   modelFilter: "all",
   selected: null, tab: "overview", diff: false, picks: [], errorsOnly: false,
   summary: false, summaryTab: "byModel", usage: null,
@@ -100,24 +101,126 @@ function sessionStatsQuery() {
   return q.toString();
 }
 
-async function api(path) {
-  const r = await fetch(path);
-  return r.json();
+async function api(path, options) {
+  const r = await fetch(path, options);
+  const result = await r.json();
+  if (!r.ok) throw new Error(result.error || `HTTP ${r.status}`);
+  return result;
 }
 
 // ---- sessions + list -----------------------------------------------------
 
-async function loadSessions() {
-  const { sessions, live } = await api("/api/sessions");
+function applySessions({ sessions, live, controllable }) {
   state.live = live;
+  state.controllable = controllable;
   const sel = $("#session");
   sel.innerHTML = "";
   for (const s of sessions) {
-    sel.append(el("option", { value: s, textContent: s + (s === live ? "  (live)" : "") }));
+    sel.append(el("option", { value: s, textContent: s + (s === live ? "  (recording)" : "  (saved)") }));
   }
-  state.session = state.session || live || sessions[0] || null;
+  if (!sessions.includes(state.session)) state.session = live || sessions[0] || null;
   if (state.session) sel.value = state.session;
   $("#live").classList.toggle("off", !live);
+  $("#live").textContent = live ? "recording" : controllable ? "stopped" : "read-only";
+  $("#live").title = live ? `New requests are recorded in ${live}` : "New requests are not being recorded";
+  renderCaptureControls();
+}
+
+function renderCaptureControls() {
+  for (const id of ["startSession", "stopSession", "resetSession"]) $("#" + id).hidden = !state.controllable;
+  $("#startSession").disabled = state.captureBusy || !!state.live;
+  $("#stopSession").disabled = state.captureBusy || !state.live;
+  $("#resetSession").disabled = state.captureBusy || !state.session;
+  $("#exportSession").disabled = state.captureBusy || !state.session;
+}
+
+function showCaptureError(error) {
+  const message = $("#captureError");
+  message.textContent = error ? error.message : "";
+  message.hidden = !error;
+}
+
+async function selectSession(session) {
+  state.session = session;
+  $("#session").value = session;
+  state.diff = false;
+  $("#diffBtn").textContent = "Diff: off";
+  $("#diffBtn").classList.remove("on");
+  state.summary = false;
+  updateSummaryBtn();
+  await reloadSessionView();
+}
+
+async function reloadSessionView() {
+  const version = ++state.sessionVersion;
+  state.liveRenderVersion++;
+  state.picks = [];
+  state.modelFilter = "all";
+  if (!state.summary) {
+    state.selected = LIVE;
+    $("#detail").innerHTML = '<div class="empty">Loading session...</div>';
+  }
+  await loadList();
+  if (version === state.sessionVersion && !state.summary && state.selected === LIVE) await renderLive();
+}
+
+async function changeCapture(action, session = state.session) {
+  if (state.captureBusy) return;
+  if (action === "delete" && session === state.live) {
+    showCaptureError(new Error("Stop this session before deleting it"));
+    return;
+  }
+  const confirmation = action === "reset"
+    ? `Clear all requests in session ${session}? Other sessions will be kept. This cannot be undone.`
+    : action === "delete" ? `Permanently delete session ${session} and all its requests? Other sessions will be kept. This cannot be undone.` : null;
+  if (confirmation && !window.confirm(confirmation)) return;
+  const selected = state.session;
+  state.captureBusy = true;
+  showCaptureError(null);
+  renderCaptureControls();
+  try {
+    const query = ["reset", "delete"].includes(action) ? "?session=" + encodeURIComponent(session) : "";
+    const snapshot = await api("/api/sessions/" + action + query, { method: "POST" });
+    applySessions(snapshot);
+    if (action === "start") await selectSession(snapshot.live);
+    else if (action === "reset" && !state.summary && state.session === session) await selectSession(session);
+    else if (action === "delete" && selected === session) await reloadSessionView();
+    else renderList();
+    if (state.summary) await loadUsage();
+  } catch (error) {
+    showCaptureError(error);
+  } finally {
+    state.captureBusy = false;
+    renderCaptureControls();
+    if (state.summary) renderSummary();
+  }
+}
+
+async function exportSession(session = state.session) {
+  showCaptureError(null);
+  try {
+    if (!session) throw new Error("Select a session to export");
+    const response = await fetch("/api/sessions/export?session=" + encodeURIComponent(session));
+    if (!response.ok) {
+      const result = await response.json();
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
+    const href = URL.createObjectURL(await response.blob());
+    const link = el("a", { href, download: `ccglass-session-${session}.json` });
+    document.body.append(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    }
+  } catch (error) {
+    showCaptureError(error);
+  }
+}
+
+async function loadSessions() {
+  applySessions(await api("/api/sessions"));
   await loadList();
   // Default the dashboard to the Live stream view on first load — most users
   // want to watch traffic, not pick from a list of HTTP rounds.
@@ -125,12 +228,13 @@ async function loadSessions() {
 }
 
 async function loadList() {
-  if (!state.session) return;
-  const session = encodeURIComponent(state.session);
-  const [{ entries }, stats] = await Promise.all([
-    api("/api/requests?session=" + session),
+  const version = state.sessionVersion;
+  const session = state.session;
+  const [{ entries }, stats] = session ? await Promise.all([
+    api("/api/requests?session=" + encodeURIComponent(session)),
     api("/api/session-stats?" + sessionStatsQuery()),
-  ]);
+  ]) : [{ entries: [] }, { error: "no session" }];
+  if (version !== state.sessionVersion || session !== state.session) return;
   state.entries = entries;
   applySessionStats(stats);
   renderModelFilter();
@@ -232,12 +336,13 @@ function renderList() {
   const list = $("#list");
   list.innerHTML = "";
   // Sticky "Live" entry — always at top, opens the streaming timeline.
-  const liveRow = el("div", { className: "live-entry" + (state.selected === LIVE ? " sel" : "") + (state.live ? "" : " off") });
+  const isLive = state.live && state.session === state.live;
+  const liveRow = el("div", { className: "live-entry" + (state.selected === LIVE ? " sel" : "") + (isLive ? "" : " off") });
   liveRow.append(
     el("div", { className: "top" },
       el("span", { className: "dot" }),
-      el("span", { textContent: state.live ? "Live stream" : "Stream (offline)" })),
-    el("div", { className: "sub", textContent: state.live ? "All turns, append as they happen" : "Replay saved turns top-to-bottom" })
+      el("span", { textContent: isLive ? "Live stream" : "Session replay" })),
+    el("div", { className: "sub", textContent: isLive ? "All turns, append as they happen" : "Replay saved turns top-to-bottom" })
   );
   liveRow.onclick = () => onPick(LIVE);
   list.append(liveRow);
@@ -289,7 +394,9 @@ function onPick(id) {
 // ---- detail --------------------------------------------------------------
 
 async function loadDetail(id) {
+  const version = state.sessionVersion;
   const rec = await api("/api/request/" + encodeURIComponent(id));
+  if (version !== state.sessionVersion || state.selected !== id) return;
   state.detail = rec;
   renderDetail();
 }
@@ -729,6 +836,14 @@ function renderSummary() {
       if (state.summaryTab === "bySession") loadUsage();
     };
   });
+  d.querySelectorAll("button[data-session-action]").forEach((node) => {
+    node.onclick = () => {
+      const session = decodeURIComponent(node.dataset.session);
+      if (node.dataset.sessionAction === "open") selectSession(session).catch(showCaptureError);
+      else if (node.dataset.sessionAction === "export") exportSession(session);
+      else changeCapture(node.dataset.sessionAction, session);
+    };
+  });
 }
 
 function byModelHtml(rows) {
@@ -743,10 +858,14 @@ function byModelHtml(rows) {
 function bySessionHtml(rows, { showName = true } = {}) {
   if (!rows?.length) return `<p style="color:var(--muted)">no sessions</p>`;
   const nameHead = showName ? `<th>name</th>` : "";
-  const head = `<tr>${nameHead}<th>session</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache hit</th><th class="n">cost</th></tr>`;
+  const head = `<tr>${nameHead}<th>session</th><th>status</th><th class="n">reqs</th><th class="n">input</th><th class="n">output</th><th class="n">cache hit</th><th class="n">cost</th><th>actions</th></tr>`;
   const body = rows.map((r) => {
     const nameCell = showName ? `<td>${esc(r.name || "—")}</td>` : "";
-    return `<tr>${nameCell}<td>${esc(r.session)}</td><td class="n">${fmt(r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${pct(r.cacheHitRate)}</td><td class="n">${usd(r.usd)}</td></tr>`;
+    const session = encodeURIComponent(r.session);
+    const status = r.session === state.live ? "recording" : "saved";
+    const reset = state.controllable ? ` <button data-session-action="reset" data-session="${session}"${state.captureBusy ? " disabled" : ""}>Reset</button>` : "";
+    const remove = state.controllable ? ` <button data-session-action="delete" data-session="${session}" title="${r.session === state.live ? "Stop this session before deleting it" : "Permanently delete this stopped session"}"${state.captureBusy || r.session === state.live ? " disabled" : ""}>Delete</button>` : "";
+    return `<tr>${nameCell}<td>${esc(r.session)}</td><td>${status}</td><td class="n">${fmt(r.entries ?? r.requests)}</td><td class="n">${fmt(r.input)}</td><td class="n">${fmt(r.output)}</td><td class="n">${pct(r.cacheHitRate)}</td><td class="n">${usd(r.usd)}</td><td><button data-session-action="open" data-session="${session}">Open</button> <button data-session-action="export" data-session="${session}"${state.captureBusy ? " disabled" : ""}>Export</button>${reset}${remove}</td></tr>`;
   }).join("");
   return `<table class="usage-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
@@ -1253,19 +1372,26 @@ function liveAppendEntry(rec, { flash = false } = {}) {
 }
 
 async function renderLive() {
+  const version = ++state.liveRenderVersion;
+  const session = state.session;
   state.liveSeen.clear();
   state.liveToolRows.clear();
   state.livePinned = true;
 
   const d = $("#detail");
+  if (!session) {
+    d.innerHTML = '<div class="empty">No sessions yet. Start a session to record requests.</div>';
+    return;
+  }
   d.innerHTML =
     `<div class="live-pane">` +
       `<div class="live-toolbar">` +
         `<label><input type="checkbox" id="liveAutoScroll" checked /> auto-scroll</label>` +
         `<button id="liveExpandAll">expand all</button>` +
         `<button id="liveCollapseAll">collapse all</button>` +
+        `<button id="liveExportSession" title="Download the entire displayed session as JSON"${session ? "" : " disabled"}>export session</button>` +
         `<span class="spacer"></span>` +
-        `<span class="muted">turns append as they arrive · click a request on the left for the classic per-call view</span>` +
+        `<span class="muted">${session === state.live ? "turns append as they arrive" : "saved session replay"} · click a request on the left for the classic per-call view</span>` +
       `</div>` +
       `<div class="live-body"></div>` +
     `</div>`;
@@ -1283,12 +1409,14 @@ async function renderLive() {
   $("#liveAutoScroll").onchange = (e) => { state.livePinned = e.target.checked; };
   $("#liveExpandAll").onclick = () => { for (const r of pane.querySelectorAll("details.flowrow")) r.open = true; };
   $("#liveCollapseAll").onclick = () => { for (const r of pane.querySelectorAll("details.flowrow")) r.open = false; };
+  $("#liveExportSession").onclick = () => exportSession(session);
 
   // Walk every entry in order, fetch its full record, append flow steps.
   const entries = entriesForModelFilter(state.entries).slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
   for (const e of entries) {
     try {
       const rec = await api("/api/request/" + encodeURIComponent(e.id));
+      if (version !== state.liveRenderVersion || session !== state.session || state.selected !== LIVE) return;
       if (rec && !rec.error) liveAppendEntry(rec);
     } catch { /* skip on error */ }
   }
@@ -1303,8 +1431,25 @@ async function renderLive() {
 function connectStream() {
   try {
     const es = new EventSource("/api/stream");
+    es.addEventListener("sessions", async (ev) => {
+      try {
+        const snapshot = JSON.parse(ev.data);
+        const previousSession = state.session;
+        applySessions(snapshot);
+        if (previousSession !== state.session || (snapshot.reset && snapshot.reset === state.session)) {
+          await reloadSessionView();
+        } else {
+          renderList();
+          if (!state.summary && state.selected === LIVE) await renderLive();
+        }
+        if (state.summary) await loadUsage();
+      } catch (error) {
+        showCaptureError(error);
+      }
+    });
     es.onmessage = async (ev) => {
       const s = JSON.parse(ev.data);
+      if (state.summary && !s.pending) scheduleUsageReload();
       if (s.session !== (state.session || state.live)) return;
       const i = state.entries.findIndex((e) => e.id === s.id);
       if (i >= 0) state.entries[i] = s;
@@ -1314,34 +1459,36 @@ function connectStream() {
       renderList();
       clearDetailIfHidden();
       if (state.selected === LIVE) {
+        const version = state.liveRenderVersion;
         try {
           const rec = await api("/api/request/" + encodeURIComponent(s.id));
+          if (version !== state.liveRenderVersion || state.selected !== LIVE || s.session !== state.session) return;
           if (rec && !rec.error) liveAppendEntry(rec, { flash: true });
         } catch { /* ignore */ }
       } else if (!state.summary && s.id === state.selected) {
         loadDetail(s.id);
       }
       if (!s.pending) loadSessionStatsQuiet();
-      if (state.summary && !s.pending) scheduleUsageReload();
     };
   } catch {}
 }
 
 async function loadSessionStatsQuiet() {
   if (!state.session) return;
+  const session = state.session;
+  const version = state.sessionVersion;
   const stats = await api("/api/session-stats?" + sessionStatsQuery());
+  if (session !== state.session || version !== state.sessionVersion) return;
   applySessionStats(stats);
   renderModelFilter();
   renderSessionStats();
 }
 
-$("#session").onchange = async (e) => {
-  state.session = e.target.value;
-  state.picks = [];
-  state.modelFilter = "all";
-  await loadList();
-  if (state.selected === LIVE) renderLive();
-};
+$("#session").onchange = (e) => selectSession(e.target.value).catch(showCaptureError);
+$("#startSession").onclick = () => changeCapture("start");
+$("#stopSession").onclick = () => changeCapture("stop");
+$("#resetSession").onclick = () => changeCapture("reset");
+$("#exportSession").onclick = () => exportSession();
 $("#modelFilter").onchange = (e) => {
   state.modelFilter = e.target.value;
   loadSessionStatsQuiet();
