@@ -57,19 +57,19 @@ describe("dashboard integration", () => {
     const { container } = render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /test-model.*#1/s }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Next request" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("tab", { name: "raw" }));
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
     fireEvent.click(screen.getByRole("button", { name: "Focus payload" }));
     expect(container.querySelector(".metrics-grid")).toBeNull();
     expect(container.querySelector(".request-panel")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Dashboard views" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "raw" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "HTTP" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "Previous request" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Next request" }));
     await waitFor(() => expect(dashboard.loadRecord).toHaveBeenCalledWith("s/2", true));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Previous request" })).toBeEnabled(),
     );
-    expect(screen.getByRole("tab", { name: "raw" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "HTTP" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "Next request" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Show panels" }));
     expect(container.querySelector(".metrics-grid")).not.toBeNull();

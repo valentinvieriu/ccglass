@@ -3377,6 +3377,114 @@ button.flow-zone-head:hover {
   font-weight: inherit;
 }
 
+/* Response: the reply, read like one more message. */
+.resp-view,
+.http-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.resp-view .detail-card {
+  margin: 0;
+}
+.resp-facts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.resp-facts strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+.msg-frame {
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-surface);
+}
+.resp-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+/* HTTP: what went over the wire, request then response. */
+.http-view {
+  gap: 22px;
+}
+.http-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+}
+.http-line {
+  min-width: 0;
+  color: var(--color-ink);
+  font: 12.5px var(--mono);
+  overflow-wrap: anywhere;
+}
+.http-fact {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.http-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12px/1.55 var(--mono);
+}
+.http-table th,
+.http-table td {
+  padding: 5px 12px;
+  border-top: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+.http-table tr:first-child th,
+.http-table tr:first-child td {
+  border-top: 0;
+}
+.http-table th {
+  width: 1%;
+  padding-right: 20px;
+  color: var(--color-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.http-table td {
+  color: var(--color-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.http-none {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-subtle);
+  font-size: 12px;
+}
+.http-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: left;
+}
+.http-fold:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+.http-fold[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
 @container request-flow (min-width: 1100px) {
   .flow-row {
     grid-template-columns: 22px 200px minmax(0, 1fr) auto;

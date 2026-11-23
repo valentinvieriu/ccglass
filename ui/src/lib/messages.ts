@@ -197,3 +197,23 @@ export function buildMessages(record: RequestRecord): MessagesModel {
     ),
   };
 }
+
+/** The model's reply to this request, in the same shape as a sent message. */
+export function buildReply(record: RequestRecord): MessageGroup | undefined {
+  const steps = flowSteps(record).filter((step) => step.latest && step.kind !== "stop");
+  if (!steps.length) return undefined;
+  const parts: MessagePart[] = steps.map((step, index) => {
+    const item = stepItem(step, `r-${index}`, "response", undefined, "awaiting");
+    return { id: item.id, index, item, zone: "response", cache: false };
+  });
+  return {
+    key: "reply",
+    number: 0,
+    role: "assistant",
+    label: "Assistant",
+    tone: "assistant",
+    zone: "response",
+    chars: parts.reduce((total, part) => total + part.item.text.length, 0),
+    parts,
+  };
+}

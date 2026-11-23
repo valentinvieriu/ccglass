@@ -15,7 +15,9 @@ import { buildCurl } from "../lib/curl";
 import { countMessages } from "../lib/messages";
 import { ContentBlock, CopyButton } from "./JsonView";
 import FlowView from "./FlowView";
+import HttpView from "./HttpView";
 import MessagesView from "./MessagesView";
+import ResponseView, { responseError } from "./ResponseView";
 import ToolsView from "./ToolsView";
 
 const tabs = [
@@ -25,19 +27,12 @@ const tabs = [
   "messages",
   "tools",
   "response",
-  "headers",
-  "raw",
+  "http",
 ] as const;
 export type RequestTab = (typeof tabs)[number];
 type Tab = RequestTab;
-
-function rawRequestBody(record: RequestRecord) {
-  return record.request?.bodyRaw ?? record.request?.body;
-}
-
-function responseError(record: RequestRecord) {
-  return record.parsed?.response?.error ?? record.response?.error ?? record.error;
-}
+// Tab names are shown capitalized; an acronym needs its own spelling.
+const TAB_LABELS: Partial<Record<Tab, string>> = { http: "HTTP" };
 
 export function MetricCard({
   label,
@@ -207,7 +202,7 @@ function Overview({ record }: { record: RequestRecord }) {
         <div>
           <dt>Context</dt>
           <dd>
-            {view?.system?.length || 0} system blocks · {view?.messages?.length || 0} messages ·{" "}
+            {view?.system?.length || 0} system blocks · {countMessages(view?.messages)} messages ·{" "}
             {view?.tools?.length || 0} tools
           </dd>
         </div>
@@ -220,63 +215,7 @@ function Overview({ record }: { record: RequestRecord }) {
           expanded
         />
       )}
-      <ContentBlock
-        title="Request line"
-        value={`${record.request?.method || "GET"} ${record.request?.url || "/"}`}
-        expanded
-      />
-      <ContentBlock title="Raw request body" value={rawRequestBody(record)} />
     </div>
-  );
-}
-
-function ResponseView({ record }: { record: RequestRecord }) {
-  const response = record.parsed?.response;
-  const error = responseError(record);
-  if (!response && !record.response && error == null)
-    return <EmptyContent>No response captured yet.</EmptyContent>;
-  const raw = record.response?.raw ?? response ?? record.response;
-  return (
-    <>
-      {response && (
-        <ContentBlock
-          title="Response usage"
-          value={response.usage ?? {}}
-          tags={response.streamed ? <Badge tone="accent">streamed</Badge> : undefined}
-        />
-      )}
-      {response?.content?.map((block, index) => (
-        <ContentBlock
-          key={`${block.type}-${index}`}
-          title={
-            block.type === "tool_use"
-              ? `Tool call · ${block.name || "tool"}`
-              : block.type || `Content ${index + 1}`
-          }
-          value={
-            block.type === "tool_use"
-              ? (block.input ?? block)
-              : (block.text ?? block.thinking ?? block)
-          }
-          tags={
-            block.id || block.callId ? (
-              <Badge title={block.id || block.callId}>
-                {(block.id || block.callId || "").slice(-8)}
-              </Badge>
-            ) : undefined
-          }
-        />
-      ))}
-      {error != null && (
-        <ContentBlock
-          title="Response error"
-          value={error}
-          className="border-danger-border!"
-          expanded
-        />
-      )}
-      {raw != null && <ContentBlock title="Raw response" value={raw} />}
-    </>
   );
 }
 
@@ -439,7 +378,7 @@ export default function RequestDetail({
             className={`tab ${tab === name ? "tab-active" : ""}`}
             onClick={() => setTab(name)}
           >
-            {name}
+            {TAB_LABELS[name] ?? name}
             {counts[name] != null && <span className="ml-1 mono">{counts[name]}</span>}
           </button>
         ))}
@@ -484,24 +423,14 @@ export default function RequestDetail({
             }
           />
         )}
-        {tab === "response" && <ResponseView record={record} />}
-        {tab === "headers" && (
-          <>
-            <ContentBlock title="Request headers" value={record.request?.headers || {}} expanded />
-            <ContentBlock
-              title="Response headers"
-              value={record.response?.headers || {}}
-              expanded
-            />
-          </>
+        {tab === "response" && (
+          <ResponseView
+            record={record}
+            onOpenTool={view?.tools?.length ? (name) => open("tools", name) : undefined}
+            onOpenHttp={() => setTab("http")}
+          />
         )}
-        {tab === "raw" && (
-          <>
-            <ContentBlock title="Raw request body" value={rawRequestBody(record)} />
-            <ContentBlock title="Raw response" value={record.response?.raw ?? record.response} />
-            <ContentBlock title="Captured record" value={record} />
-          </>
-        )}
+        {tab === "http" && <HttpView record={record} />}
       </div>
     </section>
   );

@@ -98,13 +98,13 @@ describe("request inspector", () => {
     expect(within(definition).getByText("path")).toBeInTheDocument();
     fireEvent.click(within(definition).getByRole("button", { name: /Input schema as sent/ }));
     expect(within(definition).getByText(/"path"/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: /^headers/i }));
-    expect(
-      within(
-        screen.getByRole("heading", { name: "Response headers" }).closest("section")!,
-      ).getByLabelText("Formatted JSON"),
-    ).toHaveTextContent('"content-type": "application/json"');
-    expect(screen.getByText(/\[REDACTED\]/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
+    const responseHeaders = within(
+      screen.getByRole("heading", { name: "Response headers" }).closest("section")!,
+    );
+    expect(responseHeaders.getByRole("rowheader", { name: "content-type" })).toBeInTheDocument();
+    expect(responseHeaders.getByRole("cell", { name: "application/json" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "[REDACTED]" })).toBeInTheDocument();
     const links = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"));
     for (const format of ["raw", "md", "json", "har"])
       expect(links).toContain("/api/export?id=saved%2F1&format=" + format);
@@ -200,9 +200,9 @@ describe("request inspector", () => {
     fireEvent.click(screen.getByRole("tab", { name: "response" }));
     expect(screen.getByText("upstream disconnected")).toBeInTheDocument();
     expect(screen.getByText("data: provider-specific payload")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "raw" }));
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
     expect(screen.getByText("data: provider-specific payload")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Captured record" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Response" })).getByText("HTTP 502")).toBeInTheDocument();
   });
 
   it("preserves thinking, unknown content, cache annotations, tool inputs and tool-result pairing", async () => {
@@ -408,9 +408,9 @@ describe("request inspector", () => {
     const sections = screen.getAllByRole("region", { name: "Request inspector" });
     const first = within(sections[0]);
     fireEvent.keyDown(first.getByRole("tab", { name: "overview" }), { key: "End" });
-    expect(first.getByRole("tab", { name: "raw" })).toHaveFocus();
-    expect(first.getByRole("tab", { name: "raw" })).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(first.getByRole("tab", { name: "raw" }), { key: "ArrowRight" });
+    expect(first.getByRole("tab", { name: "HTTP" })).toHaveFocus();
+    expect(first.getByRole("tab", { name: "HTTP" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(first.getByRole("tab", { name: "HTTP" }), { key: "ArrowRight" });
     expect(first.getByRole("tab", { name: "overview" })).toHaveFocus();
     const ids = [...container.querySelectorAll("[id]")].map((element) => element.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -443,6 +443,107 @@ describe("request inspector", () => {
       expect(onExport).toHaveBeenCalledWith(format);
     }
     vi.unstubAllGlobals();
+  });
+});
+
+describe("response and HTTP tabs", () => {
+  const exchange: RequestRecord = {
+    ...record,
+    latencyMs: 2140,
+    timing: { totalMs: 2140, ttftMs: 800 },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {
+        "user-agent": "claude-cli",
+        "x-api-key": "[REDACTED]",
+        "x-stainless-arch": "arm64",
+        "x-stainless-lang": "js",
+        "x-stainless-os": "MacOS",
+        "x-stainless-runtime": "node",
+      },
+      body: { model: "test-model", messages: [] },
+    },
+    response: {
+      status: 200,
+      headers: { "request-id": "req_123", "set-cookie": ["a=1", "b=2"] },
+      raw: "event: message_start",
+    },
+    parsed: {
+      view: record.parsed!.view,
+      usageStats: { output: 61 },
+      response: {
+        streamed: true,
+        stop_reason: "tool_use",
+        usage: { output_tokens: 61 },
+        content: [
+          { type: "text", text: "Reading it." },
+          { type: "tool_use", name: "read_file", id: "call-next", input: { path: "/tmp/a" } },
+        ],
+      },
+    },
+  };
+
+  it("shows the reply as a message with its outcome, without repeating usage or the raw stream", () => {
+    render(<RequestDetail record={exchange} />);
+    fireEvent.click(screen.getByRole("tab", { name: "response" }));
+    expect(screen.getByText("HTTP 200")).toBeInTheDocument();
+    expect(screen.getByText("tool_use")).toBeInTheDocument();
+    expect(screen.getByText(/in 2\.14s · first token after 800ms/)).toHaveTextContent("61 tokens");
+    const reply = within(screen.getByRole("article", { name: "Assistant · reply" }));
+    expect(reply.getByText("Reading it.")).toBeInTheDocument();
+    expect(reply.getByLabelText("Formatted JSON")).toHaveTextContent('"path": "/tmp/a"');
+    expect(reply.getByText("awaiting output")).toBeInTheDocument();
+    expect(screen.getByText(/The model asked for a tool/)).toBeInTheDocument();
+    expect(screen.queryByText("Response usage")).toBeNull();
+    expect(screen.queryByText("event: message_start")).toBeNull();
+    fireEvent.click(reply.getByRole("button", { name: "Definition" }));
+    expect(screen.getByRole("tab", { name: /^tools/i })).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(screen.getByRole("complementary", { name: "Tool definition" })).getByRole("heading", {
+        name: "read_file",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "response" }));
+    fireEvent.click(screen.getByRole("button", { name: "HTTP" }));
+    expect(screen.getByRole("tab", { name: "HTTP" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("puts the wire view in one place: request line, readable headers and both bodies", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<RequestDetail record={exchange} />);
+    // Overview no longer repeats what the HTTP tab holds.
+    expect(screen.queryByText("Raw request body")).toBeNull();
+    expect(screen.queryByText("Request line")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
+    const request = within(screen.getByRole("region", { name: "Request" }));
+    expect(request.getByText("POST /v1/messages")).toBeInTheDocument();
+    expect(request.getByRole("cell", { name: "claude-cli" })).toBeInTheDocument();
+    expect(request.getByRole("cell", { name: "[REDACTED]" })).toBeInTheDocument();
+    expect(request.getByText("6 headers")).toBeInTheDocument();
+    expect(request.queryByRole("rowheader", { name: "x-stainless-arch" })).toBeNull();
+    fireEvent.click(request.getByRole("button", { name: /Show 4 client telemetry headers/ }));
+    expect(request.getByRole("rowheader", { name: "x-stainless-arch" })).toBeInTheDocument();
+    expect(request.getByRole("heading", { name: "Raw request body" })).toBeInTheDocument();
+    const response = within(screen.getByRole("region", { name: "Response" }));
+    expect(response.getByText("HTTP 200")).toBeInTheDocument();
+    expect(response.getByRole("cell", { name: "req_123" })).toBeInTheDocument();
+    expect(response.getByText("event: message_start")).toBeInTheDocument();
+    fireEvent.click(response.getByRole("button", { name: "Copy response headers" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("request-id: req_123\nset-cookie: a=1\nb=2"),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("says when no response has arrived instead of showing empty cards", () => {
+    render(<RequestDetail record={{ ...exchange, response: null, parsed: { view: record.parsed!.view } }} />);
+    fireEvent.click(screen.getByRole("tab", { name: "response" }));
+    expect(screen.getByText("No response captured yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
+    expect(within(screen.getByRole("region", { name: "Response" })).getByText("not captured yet")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Response headers" })).toBeNull();
   });
 });
 

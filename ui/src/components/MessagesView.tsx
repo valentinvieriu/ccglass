@@ -58,15 +58,17 @@ function partMatches(query: string, part: MessagePart) {
   );
 }
 
-interface Reading {
+export interface Reading {
   query: string;
   /** Bumped by "Expand all" / "Collapse all" so every fold follows it once. */
   expand: { open: boolean; version: number };
+  /** Start with everything unfolded, for a view that shows a single message. */
+  open?: boolean;
 }
 
 /** A fold that follows the global expand toggle but can be changed on its own. */
 function useFold(initial: boolean, reading: Reading, matches: boolean) {
-  const [open, setOpen] = useState(initial);
+  const [open, setOpen] = useState(initial || !!reading.open);
   const version = useRef(reading.expand.version);
   useEffect(() => {
     if (version.current === reading.expand.version) return;
@@ -91,7 +93,8 @@ function Body({
   error?: boolean;
   reading: Reading;
 }) {
-  const long = useMemo(() => isLong(text), [text]);
+  // A view that starts unfolded has nothing to clip.
+  const long = useMemo(() => !reading.open && isLong(text), [reading.open, text]);
   const matches = !!reading.query && text.toLowerCase().includes(reading.query);
   const [open, setOpen] = useFold(false, reading, matches);
   const shown = long && !open;
@@ -302,6 +305,16 @@ function Part({
       </div>
     );
 
+  if (item.kind === "assistant" && item.name.startsWith("Assistant · "))
+    return (
+      <div className={frame} id={domId}>
+        <div className="msg-part-head">
+          <span className="msg-part-title mono">{item.name.slice("Assistant · ".length)}</span>
+        </div>
+        <Body text={item.text} mono reading={reading} />
+      </div>
+    );
+
   if (!item.text.trim())
     return (
       <p className={`${frame} msg-note`} id={domId}>
@@ -330,6 +343,95 @@ function Part({
         ),
       )}
     </div>
+  );
+}
+
+/** One message: who wrote it, where it sits in the request, and its content blocks. */
+export function MessageEntry({
+  group,
+  reading,
+  dom,
+  flash,
+  defined,
+  where,
+  onJump,
+  onOpenTool,
+}: {
+  group: MessageGroup;
+  reading: Reading;
+  dom: (id: string) => string;
+  /** Id of the block to highlight after a jump. */
+  flash?: string;
+  /** Names of the tools the request defines. */
+  defined: Set<string>;
+  /** Replaces the position in the request body, e.g. for the model's reply. */
+  where?: string;
+  onJump: (id: string) => void;
+  onOpenTool?: (name: string) => void;
+}) {
+  const Icon = ICONS[group.tone];
+  const tags = [
+    ...new Set(group.parts.flatMap((part) => (part.item.kind === "user" ? part.item.tags : []))),
+  ].filter((tag) => TAG_INFO[tag] && tag !== "reminder");
+  const wire = !where && group.role && group.role !== group.label.toLowerCase();
+  const text = group.parts.map((part) => part.item.text).join("\n\n");
+  const place = where ?? position(group.number, group.path);
+  return (
+    <article className="msg" data-tone={group.tone} aria-label={`${group.label} · ${place}`}>
+      <span className={`flow-tile flow-tile-${group.tone}`}>
+        <Icon size={13} aria-hidden="true" />
+      </span>
+      <div className="msg-main">
+        <header className="msg-head">
+          <strong>{group.label}</strong>
+          {tags.map((tag) => (
+            <span className="flow-tag" key={tag} title={TAG_INFO[tag].desc}>
+              {TAG_INFO[tag].headline}
+            </span>
+          ))}
+          <span
+            className="msg-path mono"
+            title={
+              !where && group.path
+                ? `${group.path} in the request body${wire ? `, sent in the ${group.role} role` : ""}`
+                : undefined
+            }
+          >
+            {place}
+            {wire ? ` · role ${group.role}` : ""}
+          </span>
+          <span className="msg-size">{chars(group.chars)}</span>
+          <CopyButton
+            text={text}
+            label={`Copy ${group.label.toLowerCase()} ${place}`}
+            displayLabel="Copy"
+            className="msg-copy"
+          />
+        </header>
+        {group.parts.map((part) => (
+          <div key={part.id} className="msg-slot">
+            <Part
+              part={part}
+              alone={group.parts.length === 1}
+              reading={reading}
+              domId={dom(part.id)}
+              flash={flash === part.id}
+              defined={!part.item.tool || defined.has(part.item.tool)}
+              onJump={onJump}
+              onOpenTool={onOpenTool}
+            />
+            {part.cache && (
+              <p
+                className="msg-cache"
+                title="This block carries a cache breakpoint: the provider can reuse the request up to here instead of reading it again."
+              >
+                Cache breakpoint · everything up to here can be read from cache
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </article>
   );
 }
 
@@ -497,12 +599,6 @@ export default function MessagesView({
           {visible.map((group) => {
             const divider = group.zone !== zone ? ZONES[group.zone] : undefined;
             zone = group.zone;
-            const Icon = ICONS[group.tone];
-            const tags = [
-              ...new Set(group.parts.flatMap((part) => (part.item.kind === "user" ? part.item.tags : []))),
-            ].filter((tag) => TAG_INFO[tag] && tag !== "reminder");
-            const wire = group.role && group.role !== group.label.toLowerCase();
-            const text = group.parts.map((part) => part.item.text).join("\n\n");
             return (
               <li key={group.key} className="msg-item">
                 {divider && (
@@ -512,65 +608,15 @@ export default function MessagesView({
                     <span>{divider[1]}</span>
                   </div>
                 )}
-                <article
-                  className="msg"
-                  data-tone={group.tone}
-                  aria-label={`${group.label} · ${position(group.number, group.path)}`}
-                >
-                  <span className={`flow-tile flow-tile-${group.tone}`}>
-                    <Icon size={13} aria-hidden="true" />
-                  </span>
-                  <div className="msg-main">
-                    <header className="msg-head">
-                      <strong>{group.label}</strong>
-                      {tags.map((tag) => (
-                        <span className="flow-tag" key={tag} title={TAG_INFO[tag].desc}>
-                          {TAG_INFO[tag].headline}
-                        </span>
-                      ))}
-                      <span
-                        className="msg-path mono"
-                        title={
-                          group.path
-                            ? `${group.path} in the request body${wire ? `, sent in the ${group.role} role` : ""}`
-                            : undefined
-                        }
-                      >
-                        {position(group.number, group.path)}
-                        {wire ? ` · role ${group.role}` : ""}
-                      </span>
-                      <span className="msg-size">{chars(group.chars)}</span>
-                      <CopyButton
-                        text={text}
-                        label={`Copy ${group.label.toLowerCase()} ${position(group.number, group.path)}`}
-                        displayLabel="Copy"
-                        className="msg-copy"
-                      />
-                    </header>
-                    {group.parts.map((part) => (
-                      <div key={part.id} className="msg-slot">
-                        <Part
-                          part={part}
-                          alone={group.parts.length === 1}
-                          reading={reading}
-                          domId={dom(part.id)}
-                          flash={flash?.id === part.id}
-                          defined={!part.item.tool || defined.has(part.item.tool)}
-                          onJump={jump}
-                          onOpenTool={onOpenTool}
-                        />
-                        {part.cache && (
-                          <p
-                            className="msg-cache"
-                            title="This block carries a cache breakpoint: the provider can reuse the request up to here instead of reading it again."
-                          >
-                            Cache breakpoint · everything up to here can be read from cache
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </article>
+                <MessageEntry
+                  group={group}
+                  reading={reading}
+                  dom={dom}
+                  flash={flash?.id}
+                  defined={defined}
+                  onJump={jump}
+                  onOpenTool={onOpenTool}
+                />
               </li>
             );
           })}
