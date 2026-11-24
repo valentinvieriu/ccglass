@@ -7,46 +7,77 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
-import { ArrowDownToLine, ArrowUpRight, ChevronRight, LoaderCircle, MessageSquare } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronRight,
+  LoaderCircle,
+  MessageSquare,
+  Trash2,
+} from "lucide-react";
 import type { EntrySummary, RequestRecord } from "../types";
-import { keyTarget, matchesFilter, matchesQuery, type FlowFilter } from "../lib/flow";
-import { fmtMs } from "../lib/format";
-import { buildReplay, entryFacts, entryFailed, isSetup, type ReplayLine } from "../lib/replay";
+import { keyTarget, matchesFilter, matchesQuery } from "../lib/flow";
+import { fmtClock, fmtMs } from "../lib/format";
+import {
+  buildReplay,
+  entryCancelled,
+  entryFacts,
+  entryFailed,
+  isSetup,
+  matchesReplayFilter,
+  type ReplayFilter,
+  type ReplayLine,
+} from "../lib/replay";
 import { buildTimeline } from "../lib/timeline";
-import { FilterBar, ItemPreview, ItemRow, KEY_HINT } from "./FlowItems";
+import { FilterBar, ItemPreview, ItemRow } from "./FlowItems";
 
 export interface TimelineViewProps {
   entries: EntrySummary[];
   records: Record<string, RequestRecord>;
   modelFilter: string;
   onOpen: (id: string) => void;
-  onExport: () => void;
+  /** Every model the session called. More than one offers a choice between them. */
+  models?: string[];
+  onModel?: (model: string) => void;
+  /** Offered for a saved session that turned out to be empty. */
+  onDelete?: () => void;
   loading: boolean;
   isLive: boolean;
   recordLimit: number;
+  /** The session's totals, shown as one line beside the title. */
+  facts?: ReactNode;
+  /** Takes the place of the title: the session's views, when it has several. */
+  heading?: ReactNode;
 }
 
-const FILTERS: [FlowFilter, string][] = [
+const FILTERS: [ReplayFilter, string][] = [
   ["all", "Everything"],
   ["prompt", "Prompts"],
   ["assistant", "Assistant"],
   ["tool", "Tool calls"],
-  ["error", "Errors"],
+  // The same word and the same number as the request list's own filter.
+  ["failed", "Failed"],
+  ["cancelled", "Cancelled"],
+  ["toolError", "Tool errors"],
 ];
 
-const clock = (ts: number | undefined) =>
-  ts ? new Date(ts).toLocaleTimeString([], { hour12: false }) : "";
+const NO_MODELS: string[] = [];
+const clock = (ts: number | undefined) => (ts ? fmtClock(ts) : "");
 
 export default function TimelineView({
   entries,
   records,
   modelFilter,
   onOpen,
-  onExport,
+  models = NO_MODELS,
+  onModel,
+  onDelete,
   loading,
   isLive,
   recordLimit,
+  facts,
+  heading,
 }: TimelineViewProps) {
   const limit = Math.max(1, Math.floor(recordLimit));
   const windowEntries = useMemo(
@@ -73,10 +104,12 @@ export default function TimelineView({
   }, [replay]);
 
   const id = useId();
-  const [filter, setFilter] = useState<FlowFilter>("all");
+  const [filter, setFilter] = useState<ReplayFilter>("all");
   const [search, setSearch] = useState("");
   const [openFolds, setOpenFolds] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<string | null>(null);
+  // Only matters when the window is too narrow for list and preview side by side.
+  const [previewOpen, setPreviewOpen] = useState(false);
   const focusPicked = useRef(false);
   const searchInput = useRef<HTMLInputElement>(null);
 
@@ -106,7 +139,7 @@ export default function TimelineView({
   let lastEntry: string | undefined;
   for (const line of replay.lines) {
     if (searching) {
-      if (!matchesFilter(filter, line.item) || !matchesQuery(query, line.item)) continue;
+      if (!matchesReplayFilter(filter, line, records) || !matchesQuery(query, line.item)) continue;
     } else if (line.fold) {
       if (line.fold !== lastFold) {
         blocks.push({ fold: line.fold });
@@ -135,7 +168,10 @@ export default function TimelineView({
     row?.scrollIntoView?.({ block: "nearest" });
   });
 
-  const select = useCallback((itemId: string) => setPicked(itemId), []);
+  const select = useCallback((itemId: string) => {
+    setPicked(itemId);
+    setPreviewOpen(true);
+  }, []);
   const reveal = (line: ReplayLine | undefined) => {
     if (!line) return;
     setFilter("all");
@@ -150,10 +186,16 @@ export default function TimelineView({
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const target = keyTarget(event.key, visible, selected);
+    const row = (event.target as HTMLElement).closest<HTMLElement>(".replay-line");
     if (target) {
       event.preventDefault();
       focusPicked.current = true;
       setPicked(target.item.id);
+    } else if (event.key === "Enter" && row?.dataset.entry && !event.repeat) {
+      // Enter on a row opens its request; on the fold or gutter buttons it stays a click.
+      if (!(event.target as HTMLElement).closest(".flow-row")) return;
+      event.preventDefault();
+      onOpen(row.dataset.entry);
     } else if (event.key === "e") {
       const errors = replay.lines.filter((line) => matchesFilter("error", line.item));
       if (!errors.length) return;
@@ -170,6 +212,10 @@ export default function TimelineView({
   const latencyOf = (entry: EntrySummary) => records[entry.id]?.latencyMs ?? entry.latencyMs;
   const slowest = Math.max(1, ...windowEntries.map((entry) => latencyOf(entry) ?? 0));
   const hasContent = !!windowEntries.length;
+  const failedRequests = windowEntries.filter((entry) => entryFailed(entry, records[entry.id])).length;
+  const cancelledRequests = windowEntries.filter((entry) =>
+    entryCancelled(entry, records[entry.id]),
+  ).length;
   const listed = blocks.map((block) => {
     if ("fold" in block) {
       const fold = replay.folds.get(block.fold)!;
@@ -203,21 +249,21 @@ export default function TimelineView({
         key={line.item.id}
         className={`replay-line ${first ? "replay-line-first" : ""} ${line.prompt ? "replay-line-prompt" : ""}`}
         data-entry={line.entry.id}
+        onDoubleClick={() => onOpen(line.entry.id)}
       >
         <span className="replay-gutter">
+          {/* The whole cell opens the request, not just the number in it. */}
           {first && (
-            <>
-              <button
-                type="button"
-                className="replay-open"
-                aria-label={`Inspect turn ${line.entry.seq}`}
-                title={`Open ${entryFacts(line.entry, records[line.entry.id]).join(" · ")}`}
-                onClick={() => onOpen(line.entry.id)}
-              >
-                #{line.entry.seq}
-              </button>
+            <button
+              type="button"
+              className="replay-open"
+              aria-label={`Open request ${line.entry.seq}`}
+              title={`Open ${entryFacts(line.entry, records[line.entry.id]).join(" · ")}`}
+              onClick={() => onOpen(line.entry.id)}
+            >
+              <b>#{line.entry.seq}</b>
               {latency != null && <span>{fmtMs(latency)}</span>}
-            </>
+            </button>
           )}
         </span>
         <ItemRow
@@ -233,53 +279,56 @@ export default function TimelineView({
   });
 
   return (
-    <section
-      className="detail-panel h-full"
-      aria-label={isLive ? "Live timeline" : "Session replay"}
-    >
-      <header className="detail-header timeline-header">
-        <div>
-          <h2>{isLive ? "Live stream" : "Session replay"}</h2>
-          <p>
-            {replay.promptEntries.size.toLocaleString()}{" "}
-            {replay.promptEntries.size === 1 ? "prompt" : "prompts"} ·{" "}
-            {conversation.length.toLocaleString()} events · {windowRecords.length.toLocaleString()} /{" "}
-            {windowEntries.length.toLocaleString()} requests loaded
-            {modelFilter && modelFilter !== "all" ? ` · ${modelFilter}` : ""}
-          </p>
-        </div>
+    <section className="detail-panel h-full" aria-label="Replay">
+      <header className="detail-header timeline-header view-header">
+        {heading ?? <h2>Replay</h2>}
+        {facts}
+        {windowRecords.length < windowEntries.length && (
+          <span className="timeline-progress" role="status">
+            {windowRecords.length.toLocaleString()} / {windowEntries.length.toLocaleString()} requests
+            loaded
+          </span>
+        )}
         <div className="timeline-toolbar timeline-toolbar-inline">
-          <label>
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(event) => {
-                pinned.current = event.target.checked;
-                setAutoScroll(event.target.checked);
-                if (event.target.checked) {
-                  // Following the stream again also lets the preview follow it.
-                  if (isLive) setPicked(null);
-                  scrollToEnd();
-                }
-              }}
-            />
-            Auto-scroll
-          </label>
-          <button
-            type="button"
-            className="button button-ghost button-sm icon-button"
-            onClick={onExport}
-            aria-label="Export session"
-            title="Export session"
-          >
-            <ArrowDownToLine size={13} />
-          </button>
+          {/* Nothing arrives in a saved session, so there is no end to follow. */}
+          {isLive && (
+            <label>
+              <input
+                type="checkbox"
+                checked={autoScroll}
+                onChange={(event) => {
+                  pinned.current = event.target.checked;
+                  setAutoScroll(event.target.checked);
+                  if (event.target.checked) {
+                    // Following the stream again also lets the preview follow it.
+                    setPicked(null);
+                    scrollToEnd();
+                  }
+                }}
+              />
+              Auto-scroll
+            </label>
+          )}
+          {models.length > 1 && onModel && (
+            <select
+              className="filter-select"
+              aria-label="Show requests to one model"
+              value={modelFilter || "all"}
+              onChange={(event) => onModel(event.target.value)}
+            >
+              <option value="all">All models</option>
+              {models.map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </header>
       <div className="panel-body">
         <div className="flow-view replay-view">
           {hasContent && (
             <div className="replay-strip">
+              <span className="mono">{clock(windowEntries[0]?.ts)}</span>
               <div
                 className={`replay-bars ${windowEntries.length > 80 ? "replay-bars-dense" : ""}`}
                 role="group"
@@ -288,63 +337,62 @@ export default function TimelineView({
                 {windowEntries.map((entry) => {
                   const record = records[entry.id];
                   const latency = latencyOf(entry);
+                  const failed = entryFailed(entry, record);
+                  const cancelled = entryCancelled(entry, record);
+                  const prompt = replay.promptEntries.has(entry.id);
                   return (
                     <button
                       type="button"
                       key={entry.id}
-                      className={`replay-bar ${isSetup(entry) ? "replay-bar-setup" : ""} ${entryFailed(entry, record) ? "replay-bar-error" : ""} ${replay.promptEntries.has(entry.id) ? "replay-bar-prompt" : ""}`}
+                      className={`replay-bar ${isSetup(entry) ? "replay-bar-setup" : ""} ${failed ? "replay-bar-error" : ""} ${cancelled ? "replay-bar-cancelled" : ""} ${prompt ? "replay-bar-prompt" : ""}`}
                       aria-label={`Go to request ${entry.seq}`}
                       aria-current={selected?.entry.id === entry.id ? "true" : undefined}
-                      title={entryFacts(entry, record).join(" · ")}
+                      // Each mark explains itself on hover; the full key is in the ? help.
+                      title={[
+                        ...entryFacts(entry, record),
+                        prompt ? "a prompt starts here" : "",
+                        isSetup(entry) ? "setup request" : "",
+                        failed ? "failed" : "",
+                        cancelled ? "cancelled by the client" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                       onClick={() => reveal(firstLine.get(entry.id))}
                     >
                       <i />
                       <i
                         style={{
-                          height: `${3 + Math.round(34 * Math.sqrt((latency ?? 0) / slowest))}px`,
+                          height: `${2 + Math.round(17 * Math.sqrt((latency ?? 0) / slowest))}px`,
                         }}
                       />
                     </button>
                   );
                 })}
               </div>
-              <div className="replay-strip-key">
-                <span className="mono">{clock(windowEntries[0]?.ts)}</span>
-                <div aria-label="How to read the request strip">
-                  <span>
-                    <i className="replay-key-prompt" />A prompt starts here
-                  </span>
-                  <span>
-                    <i className="replay-key-request" />
-                    Model request, taller is slower
-                  </span>
-                  <span>
-                    <i className="replay-key-setup" />
-                    Setup request
-                  </span>
-                  <span>
-                    <i className="replay-key-error" />
-                    Failed
-                  </span>
-                </div>
-                <span className="mono">{clock(windowEntries.at(-1)?.ts)}</span>
-              </div>
-              {entries.length >= limit && (
-                <p className="timeline-legend-note">
-                  Showing up to {limit.toLocaleString()} requests per page. Session exports include
-                  every request.
-                </p>
-              )}
+              <span className="mono">{clock(windowEntries.at(-1)?.ts)}</span>
             </div>
+          )}
+          {hasContent && entries.length >= limit && (
+            <p className="timeline-legend-note">
+              Showing up to {limit.toLocaleString()} requests per page. Session exports include every
+              request.
+            </p>
           )}
           {hasContent && (
             <FilterBar
               filters={FILTERS.map(([value, label]) => ({
                 value,
                 label,
-                count: (value === "all" ? conversation : replay.lines).filter((line) =>
-                  matchesFilter(value, line.item),
-                ).length,
+                // Failed and cancelled requests are counted in requests, the same
+                // number the request list shows; everything else in events.
+                count:
+                  value === "failed"
+                    ? failedRequests
+                    : value === "cancelled"
+                      ? cancelledRequests
+                      : (value === "all" ? conversation : replay.lines).filter((line) =>
+                        matchesReplayFilter(value, line, records),
+                      ).length,
               }))}
               filter={filter}
               onFilter={setFilter}
@@ -352,10 +400,12 @@ export default function TimelineView({
               onSearch={setSearch}
               searchLabel="Find in this session"
               searchRef={searchInput}
-              hint={KEY_HINT}
             />
           )}
-          <div className={hasContent ? "flow-split" : "replay-empty"}>
+          <div
+            className={hasContent ? "flow-split" : "replay-empty"}
+            data-preview={previewOpen ? "open" : "closed"}
+          >
             <div
               ref={viewport}
               className={hasContent ? "flow-list replay-list" : "replay-list"}
@@ -369,6 +419,9 @@ export default function TimelineView({
                 )
                   return;
                 scrollTarget.current = null;
+                // Reaching the end follows it only where something can still arrive:
+                // a short filtered list is always "at the end".
+                if (!isLive) return;
                 const nearBottom =
                   element.scrollHeight - element.clientHeight - element.scrollTop < 40;
                 pinned.current = nearBottom;
@@ -387,14 +440,26 @@ export default function TimelineView({
                   <span className="empty-icon">
                     <MessageSquare size={23} />
                   </span>
-                  <h3>{entries.length ? "No requests for this model" : "No requests yet"}</h3>
+                  <h3>
+                    {entries.length
+                      ? "No requests for this model"
+                      : isLive
+                        ? "Recording. Nothing has come through yet"
+                        : "This saved session is empty"}
+                  </h3>
                   <p>
                     {entries.length
-                      ? "Choose another model to view its conversation timeline."
+                      ? "Choose another model to see its part of the session."
                       : isLive
-                        ? "Captured requests will appear here as your agent works."
-                        : "This saved capture has no requests."}
+                        ? "Point your agent's API base URL at the ccglass proxy. Its address is printed in the terminal where ccglass started. Requests appear here as the agent works."
+                        : "Recording was started and stopped before any request came through."}
                   </p>
+                  {!entries.length && !isLive && onDelete && (
+                    <button type="button" className="button" onClick={onDelete}>
+                      <Trash2 size={13} />
+                      Delete session…
+                    </button>
+                  )}
                 </div>
               )}
               {listed}
@@ -419,6 +484,7 @@ export default function TimelineView({
                 item={selected?.item}
                 where={selected?.where}
                 facts={selected ? entryFacts(selected.entry, records[selected.entry.id]) : undefined}
+                onClose={() => setPreviewOpen(false)}
                 actions={
                   selected && (
                     <button
@@ -427,7 +493,7 @@ export default function TimelineView({
                       onClick={() => onOpen(selected.entry.id)}
                     >
                       Open request #{selected.entry.seq}
-                      <ArrowUpRight size={11} aria-hidden="true" />
+                      <ArrowRight size={11} aria-hidden="true" />
                     </button>
                   )
                 }

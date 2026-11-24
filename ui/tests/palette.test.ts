@@ -48,7 +48,7 @@ describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (t
     tokens = themes[theme];
   });
 
-  it("keeps text readable on normal, selected, status, and sidebar surfaces", () => {
+  it("keeps text readable on normal, selected and status surfaces", () => {
     const pairs = [
       ...[
         "surface",
@@ -63,16 +63,18 @@ describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (t
       ["success", "success-soft"],
       ["danger", "danger-soft"],
       ["danger", "danger-hover"],
-      ["info", "info-soft"],
+      ["warning", "warning-soft"],
+      ["warning", "surface"],
+      ["tool", "tool-soft"],
+      // The assistant's tile: the surface colour on ink.
+      ["surface", "ink"],
+      ...["surface-subtle"].flatMap((surface) => ["ink", "muted", "subtle"].map((text) => [text, surface])),
       ...["json-key", "json-string", "json-number", "json-boolean"].map((text) => [
         text,
         "surface-muted",
       ]),
       ["on-accent", "accent"],
       ["on-accent", "accent-hover"],
-      ...["sidebar", "sidebar-hover", "sidebar-selected"].flatMap((surface) =>
-        ["sidebar-ink", "sidebar-muted", "sidebar-accent"].map((text) => [text, surface]),
-      ),
     ];
     for (const [text, surface] of pairs)
       expect(contrast(text, surface), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
@@ -88,6 +90,50 @@ describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (t
         3,
       );
     }
+  });
+
+  it("marks a selected row with a bar that stands out from the row and from its neighbours", () => {
+    // The accent bar on the leading edge is what says "selected": 3:1 against
+    // the row's own soft fill and against the surfaces a row sits on.
+    for (const surface of ["accent-soft", "accent-soft-hover", "surface", "surface-subtle", "surface-muted"])
+      expect(contrast("accent", surface), `selection bar on ${surface}`).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps each role's mark distinguishable from the surface it sits on", () => {
+    // Tiles and chip dots: the user in the accent, tools in teal, the assistant
+    // in ink, failures in red, cancellations in amber.
+    for (const role of ["accent", "tool", "ink", "danger", "warning"])
+      for (const surface of ["surface", "surface-muted"])
+        expect(contrast(role, surface), `${role} mark on ${surface}`).toBeGreaterThanOrEqual(3);
+    // An outlined tile's edge is a boundary like an input's.
+    expect(contrast("tool", "tool-soft")).toBeGreaterThanOrEqual(4.5);
+    expect(contrast("tool-border", "surface")).toBeGreaterThan(1.5);
+  });
+
+  it("defines one type scale, three weights and four radii, and uses nothing else", () => {
+    for (const step of ["caption", "meta", "body", "prose", "title", "page"]) {
+      expect(lightTokens[`--text-${step}`], `--text-${step}`).toMatch(/^\d+px$/);
+      expect(lightTokens[`--text-${step}--line-height`]).toMatch(/^\d+px$/);
+    }
+    const rules = stylesheet.slice(stylesheet.indexOf("* {"));
+    expect(rules.match(/font-size:\s*[\d.]+(px|rem|em)/g) ?? []).toEqual([]);
+    expect(rules.match(/font-weight:\s*\d+/g) ?? []).toEqual([]);
+    const radii = new Set(
+      [...rules.matchAll(/border-radius:\s*([^;]+);/g)].flatMap((match) => match[1].split(/\s+/)),
+    );
+    expect([...radii].sort()).toEqual(
+      [
+        "0",
+        "50%",
+        "inherit",
+        "var(--radius-card)",
+        "var(--radius-control)",
+        "var(--radius-mark)",
+        "var(--radius-pill)",
+        "var(--radius-shell)",
+        "var(--radius-tag)",
+      ].filter((value) => radii.has(value)),
+    );
   });
 
   it("lets the brand hue change without sacrificing button text contrast", () => {

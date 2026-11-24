@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowRight, Columns2, GitCompareArrows, Minus, Plus } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, ArrowRight, Columns2, Minus, Plus } from "lucide-react";
 import { api } from "../api";
-import type { DiffResult, EntrySummary, RequestRecord } from "../types";
+import type { ContentBlock as Block, DiffResult, EntrySummary, RequestRecord } from "../types";
+import { previousRequest } from "../lib/entries";
+import { plural } from "../lib/format";
+import { requestLabel } from "../lib/requestRow";
 import { ContentBlock } from "./JsonView";
-import { MetricCard } from "./RequestDetail";
 
 export interface DiffViewProps {
   picks: string[];
@@ -12,17 +14,48 @@ export interface DiffViewProps {
   session?: string | null;
   selected?: string | null;
   onPicksChange?: (picks: string[]) => void;
+  /** The request Compare was opened from, to return to it. */
+  back?: { seq: number; open: () => void };
 }
 
-type RequestOption = { id: string; seq?: number; ts?: number; model?: string | null };
+type RequestOption = Pick<EntrySummary, "id"> & Partial<EntrySummary>;
 const emptyEntries: EntrySummary[] = [];
 
+/** B and the request before it to the same model: what B added. */
 function adjacentPair(options: RequestOption[], selected?: string | null): string[] {
   if (!options.length) return [];
   if (options.length === 1) return [options[0].id];
   const index = options.findIndex((option) => option.id === selected);
   const end = index > 0 ? index : index === 0 ? 1 : options.length - 1;
-  return [options[end - 1].id, options[end].id];
+  const before = previousRequest(options as EntrySummary[], options[end].id);
+  return [(before ?? options[end - 1]).id, options[end].id];
+}
+
+function Blocks({
+  side,
+  blocks,
+}: {
+  side: "added" | "removed";
+  blocks: Block[];
+}) {
+  const added = side === "added";
+  return (
+    <section className="min-w-0" aria-label={added ? "Added in B" : "Removed from A"}>
+      <h3 className={`diff-side-title ${added ? "text-success" : "text-danger"}`}>
+        {added ? <Plus size={15} /> : <Minus size={15} />}
+        {added ? "Added in B" : "Removed from A"} <span className="badge">{blocks.length}</span>
+      </h3>
+      {blocks.map((block, index) => (
+        <ContentBlock
+          key={`${block.label}-${index}`}
+          title={block.label || block.kind || "Content block"}
+          value={block.text}
+          tags={block.cache ? <span className="badge">cached</span> : undefined}
+          className={`${added ? "diff-add" : "diff-remove"} mb-3`}
+        />
+      ))}
+    </section>
+  );
 }
 
 export default function DiffView({
@@ -32,6 +65,7 @@ export default function DiffView({
   session,
   selected,
   onPicksChange,
+  back,
 }: DiffViewProps) {
   const [localPicks, setLocalPicks] = useState<string[]>(picks);
   const [sessionEntries, setSessionEntries] = useState<EntrySummary[]>([]);
@@ -89,6 +123,7 @@ export default function DiffView({
       if (!session || record.session === session || record.id.startsWith(`${session}/`)) {
         const summary = all.get(record.id);
         all.set(record.id, {
+          ...summary,
           id: record.id,
           seq: record.seq ?? summary?.seq,
           ts: record.ts ?? summary?.ts,
@@ -143,12 +178,15 @@ export default function DiffView({
     () => new Map(options.map((option) => [option.id, option])),
     [options],
   );
-  function label(id: string) {
-    const record = optionsById.get(id) || records[id];
-    return record?.seq != null
-      ? `Request ${String(record.seq).padStart(3, "0")}${record.model ? ` · ${record.model}` : ""}`
-      : id;
-  }
+  // One model in the whole session says nothing in every option.
+  const showModel = new Set(options.map((option) => option.model).filter(Boolean)).size > 1;
+  const label = (id: string) => {
+    const option = optionsById.get(id);
+    return option || records[id] ? requestLabel(option ?? { id }, records[id], showModel) : id;
+  };
+  const seqOf = (id: string | undefined) =>
+    id ? (optionsById.get(id)?.seq ?? records[id]?.seq) : undefined;
+  const name = (id: string | undefined) => (seqOf(id) != null ? `#${seqOf(id)}` : id || "");
 
   const diff =
     comparison && comparison.a === a && comparison.b === b ? comparison.result : undefined;
@@ -157,6 +195,8 @@ export default function DiffView({
   const selectable = [...options];
   for (const id of [a, b])
     if (id && !selectable.some((option) => option.id === id)) selectable.push({ id });
+  // Requests only grow, so a later baseline shows up as everything "removed".
+  const backwards = (seqOf(a) ?? 0) > (seqOf(b) ?? Infinity);
 
   return (
     <section
@@ -164,24 +204,39 @@ export default function DiffView({
       aria-label="Compare requests"
     >
       <div className="detail-header">
-        <div>
-          <h2 className="flex items-center gap-2">
-            <GitCompareArrows size={22} />
-            Compare requests
-          </h2>
-          <p>Compare any two requests, including older captures not loaded in the inspector.</p>
+        <div className="detail-header-main">
+          <h2>Compare requests</h2>
+          <p className="truncate">
+            {a && b
+              ? `What request ${name(b)} sent that ${name(a)} did not.`
+              : "What one request sent that another did not."}
+          </p>
         </div>
+        {back && (
+          <div className="detail-header-actions">
+            <button
+              type="button"
+              className="button button-ghost button-sm"
+              title="Back to the request (Esc)"
+              onClick={back.open}
+            >
+              <ArrowLeft size={14} />
+              Back to request #{back.seq}
+            </button>
+          </div>
+        )}
       </div>
-      <div className="p-5">
+      <div className="diff-body">
         <div className="diff-picker">
           {(["A · baseline", "B · comparison"] as const).map((title, index) => (
-            <div key={title} className="flex min-w-0 flex-1 flex-col gap-2">
-              <label htmlFor={`diff-request-${index}`} className="font-medium text-ink">
-                {title}
-              </label>
+            <label key={title} className="diff-pick">
+              <span aria-hidden="true">
+                <b className="request-pick">{index ? "B" : "A"}</b>
+                {index ? "Comparison" : "Baseline"}
+              </span>
               <select
-                id={`diff-request-${index}`}
-                className="filter-select w-full flex-none!"
+                className="filter-select"
+                aria-label={title}
                 value={(index === 0 ? a : b) || ""}
                 onChange={(event) =>
                   changePicks(
@@ -191,15 +246,12 @@ export default function DiffView({
               >
                 <option value="">Select {index === 0 ? "baseline" : "comparison"} request</option>
                 {selectable.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {label(option.id)} · {option.id}
+                  <option key={option.id} value={option.id} title={option.id}>
+                    {label(option.id)}
                   </option>
                 ))}
               </select>
-              <small className="mono break-all muted">
-                {(index === 0 ? a : b) || "No request selected"}
-              </small>
-            </div>
+            </label>
           ))}
           <button
             type="button"
@@ -214,13 +266,15 @@ export default function DiffView({
           <button
             type="button"
             className="button button-sm"
+            title="Set A to the request before B, to see what B added"
             disabled={!options.length || indexLoading}
             onClick={() => changePicks(adjacentPair(options, b || selected))}
           >
-            Adjacent requests
+            Previous as A
           </button>
+          <p className="diff-hint">Click a request in the list to make it B.</p>
         </div>
-        <details className="mb-4 text-xs muted">
+        <details className="mb-4 text-meta muted">
           <summary>Compare by request ID</summary>
           <p className="my-2">
             Enter a capture ID directly to compare requests outside the current list or session.
@@ -261,7 +315,7 @@ export default function DiffView({
           </form>
         </details>
         {indexLoading && (
-          <p role="status" className="mb-3 text-xs muted">
+          <p role="status" className="mb-3 text-meta muted">
             Loading all requests in this session…
           </p>
         )}
@@ -273,8 +327,8 @@ export default function DiffView({
         {!a || !b ? (
           <div className="empty-state">
             <Columns2 size={34} />
-            <h3>{a ? "Choose a second request" : "A closer look at every change"}</h3>
-            <p>Select a baseline and comparison above or pick requests in the sidebar.</p>
+            <h3>{a || b ? "Choose a second request" : "Choose two requests"}</h3>
+            <p>Select a baseline and a comparison above, or click a request in the list.</p>
           </div>
         ) : error || diff?.error ? (
           <div role="alert" className="alert">
@@ -286,64 +340,45 @@ export default function DiffView({
           </div>
         ) : (
           <div>
-            <div className="inspector-metrics grid grid-cols-2 gap-3 lg:grid-cols-4 mb-5">
-              <MetricCard label="Added in B" value={`+${diff.counts.added}`} tone="success" />
-              <MetricCard label="Removed from A" value={`−${diff.counts.removed}`} tone="danger" />
-              <MetricCard label="Unchanged" value={diff.counts.common} />
-              <MetricCard label="Cached in B" value={diff.counts.cachedInB} />
-            </div>
-            <div className="diff-grid">
-              <section className="min-w-0">
-                <h3 className="mb-3 flex items-center gap-2 text-sm text-danger">
-                  <Minus size={16} />
-                  Removed from A <span className="badge">{diff.counts.removed}</span>
-                </h3>
-                {diff.removed.length ? (
-                  diff.removed.map((block, index) => (
-                    <ContentBlock
-                      key={`${block.label}-${index}`}
-                      title={block.label || block.kind || "Content block"}
-                      value={block.text}
-                      tags={
-                        block.cache ? (
-                          <span className="badge badge-success">cached</span>
-                        ) : undefined
-                      }
-                      className="diff-remove mb-3"
-                    />
-                  ))
-                ) : (
-                  <p className="text-xs muted">No content was removed.</p>
-                )}
-              </section>
-              <section className="min-w-0">
-                <h3 className="mb-3 flex items-center gap-2 text-sm text-success">
-                  <Plus size={16} />
-                  Added in B <span className="badge">{diff.counts.added}</span>
-                </h3>
-                {diff.added.length ? (
-                  diff.added.map((block, index) => (
-                    <ContentBlock
-                      key={`${block.label}-${index}`}
-                      title={block.label || block.kind || "Content block"}
-                      value={block.text}
-                      tags={
-                        block.cache ? (
-                          <span className="badge badge-success">cached</span>
-                        ) : undefined
-                      }
-                      className="diff-add mb-3"
-                    />
-                  ))
-                ) : (
-                  <p className="text-xs muted">No content was added.</p>
-                )}
-              </section>
-            </div>
+            {/* One line of counts; a count of nothing is said in words. */}
+            <p className="request-facts diff-summary" aria-label="Comparison result">
+              <span className={diff.counts.added ? "text-success" : undefined}>
+                {diff.counts.added ? `+${diff.counts.added} added in B` : "nothing added in B"}
+              </span>
+              <span className={diff.counts.removed ? "text-danger" : undefined}>
+                {diff.counts.removed
+                  ? `−${diff.counts.removed} removed from A`
+                  : "nothing removed from A"}
+              </span>
+              <span>{diff.counts.common} unchanged</span>
+              {diff.counts.cachedInB > 0 && (
+                <span title="Blocks of B that end a cacheable prefix">
+                  {plural(diff.counts.cachedInB, "cache breakpoint")} in B
+                </span>
+              )}
+            </p>
+            {backwards && !!diff.removed.length && (
+              <p className="diff-note">
+                A is the later request, so what it added reads as removed.{" "}
+                <button type="button" className="flow-link" onClick={() => changePicks([b, a])}>
+                  Swap A and B
+                </button>
+              </p>
+            )}
+            {!diff.added.length && !diff.removed.length ? (
+              <p className="diff-note">A and B send the same context.</p>
+            ) : (
+              // A conversation only grows, so one side is usually empty: it then
+              // gets a line above instead of half the width.
+              <div className={diff.added.length && diff.removed.length ? "diff-grid" : undefined}>
+                {!!diff.removed.length && <Blocks side="removed" blocks={diff.removed} />}
+                {!!diff.added.length && <Blocks side="added" blocks={diff.added} />}
+              </div>
+            )}
             {!!diff.common.length && (
-              <details className="mt-5 rounded-md border border-border p-3">
-                <summary className="text-xs text-muted">
-                  {diff.common.length} unchanged context blocks
+              <details className="mt-5 rounded-control border border-border p-3">
+                <summary className="text-meta text-muted">
+                  {plural(diff.common.length, "unchanged context block")}
                 </summary>
                 <div className="mt-3 space-y-3">
                   {diff.common.map((block, index) => (
@@ -353,7 +388,7 @@ export default function DiffView({
                       value={block.text}
                       tags={
                         block.cache ? (
-                          <span className="badge badge-success">cached</span>
+                          <span className="badge">cached</span>
                         ) : undefined
                       }
                     />

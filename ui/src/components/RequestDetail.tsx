@@ -1,60 +1,38 @@
 import { useId, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock3,
-  Code2,
   FileText,
-  Gauge,
+  GitCompareArrows,
   List,
 } from "lucide-react";
 import type { RequestRecord } from "../types";
-import { fmt, fmtMs, fmtTps } from "../lib/format";
 import { buildCurl } from "../lib/curl";
 import { countMessages } from "../lib/messages";
+import {
+  isModelRequest,
+  openingTab,
+  requestDetails,
+  requestFacts,
+  requestPath,
+  requestTabs,
+  requestTitle,
+  type RequestTab,
+} from "../lib/request";
 import { ContentBlock, CopyButton } from "./JsonView";
+import { MiddleTruncate } from "./MiddleTruncate";
 import FlowView from "./FlowView";
 import HttpView from "./HttpView";
 import MessagesView from "./MessagesView";
-import ResponseView, { responseError } from "./ResponseView";
+import ResponseView from "./ResponseView";
 import ToolsView from "./ToolsView";
 
-const tabs = [
-  "overview",
-  "flow",
-  "system",
-  "messages",
-  "tools",
-  "response",
-  "http",
-] as const;
-export type RequestTab = (typeof tabs)[number];
+export type { RequestTab };
 type Tab = RequestTab;
 // Tab names are shown capitalized; an acronym needs its own spelling.
 const TAB_LABELS: Partial<Record<Tab, string>> = { http: "HTTP" };
-
-export function MetricCard({
-  label,
-  value,
-  note,
-  tone = "",
-}: {
-  label: string;
-  value: ReactNode;
-  note?: ReactNode;
-  tone?: string;
-}) {
-  return (
-    <div
-      className={`detail-stat ${tone === "accent" ? "border-accent-border! bg-accent-soft!" : ""}`}
-    >
-      <div className="detail-stat-label">{label}</div>
-      <div className="detail-stat-value">{value}</div>
-      {note != null && <div className="detail-stat-sub">{note}</div>}
-    </div>
-  );
-}
 
 function EmptyContent({ children }: { children: ReactNode }) {
   return (
@@ -76,14 +54,8 @@ function Badge({
   tone?: string;
   title?: string;
 }) {
-  const variant =
-    tone === "danger"
-      ? "badge-error"
-      : tone === "success" || tone === "cache"
-        ? "badge-success"
-        : tone === "accent"
-          ? "tag-orange"
-          : "badge-muted";
+  // Colour is for what went wrong; "cached" and the like are plain facts.
+  const variant = tone === "danger" ? "badge-error" : "badge-muted";
   return (
     <span className={`badge ${variant}`} title={title}>
       {children}
@@ -91,138 +63,43 @@ function Badge({
   );
 }
 
-function Overview({ record }: { record: RequestRecord }) {
-  const parsed = record.parsed;
-  const cost = parsed?.cost;
-  const usage = parsed?.response?.usage;
-  const stats = parsed?.usageStats ?? cost;
-  const cacheRead = stats?.cacheRead ?? cost?.cacheRead ?? usage?.cache_read_input_tokens;
-  const cacheWrite = stats?.cacheWrite ?? cost?.cacheWrite ?? usage?.cache_creation_input_tokens;
-  const totalInput = stats?.totalInput ?? cost?.totalInput;
-  const hitRate =
-    stats?.cacheHitRate ??
-    cost?.cacheHitRate ??
-    (totalInput != null && cacheRead != null
-      ? totalInput > 0
-        ? cacheRead / totalInput
-        : 0
-      : undefined);
-  const timing = record.timing;
-  const body = record.request?.body;
-  const model =
-    typeof body === "object" && body !== null
-      ? String(body.model || parsed?.response?.model || record.model || "Unknown model")
-      : String(parsed?.response?.model || record.model || "Unknown model");
-  const status = record.response?.status;
-  const error = responseError(record);
-  const view = parsed?.view;
+/**
+ * The measurements behind the facts line. They are folded away so that a
+ * request opens on what was sent, and one click from every tab.
+ */
+function Details({ record, id }: { record: RequestRecord; id: string }) {
   return (
-    <div>
-      <div className="section-head flex items-center gap-2 mb-3">
-        <Clock3 size={15} />
-        <h3 className="section-title">Performance</h3>
-      </div>
-      <div className="detail-grid lg:grid-cols-3!">
-        <MetricCard label="Total latency" value={fmtMs(record.latencyMs ?? timing?.totalMs)} />
-        <MetricCard label="First token" value={fmtMs(timing?.ttftMs)} note="Time to first byte" />
-        <MetricCard label="Generation" value={fmtMs(timing?.genMs)} note="Stream duration" />
-        <MetricCard label="Input speed" value={fmtTps(timing?.inTps)} note="Before first byte" />
-        <MetricCard label="Output speed" value={fmtTps(timing?.outTps)} note="After first byte" />
-      </div>
-      <div className="section-head flex items-center gap-2 mb-3">
-        <Gauge size={15} />
-        <h3 className="section-title">{cost?.usd != null ? "Tokens & cost" : "Token usage"}</h3>
-      </div>
-      <div className="detail-grid lg:grid-cols-3!">
-        <MetricCard
-          label="Estimated input"
-          value={parsed?.estTokens == null ? "—" : `≈ ${fmt(parsed.estTokens)}`}
-          note="tokens"
-        />
-        <MetricCard
-          label="Actual input"
-          value={fmt(usage?.input_tokens ?? stats?.input ?? cost?.input)}
-          note="tokens"
-        />
-        <MetricCard
-          label="Output"
-          value={fmt(usage?.output_tokens ?? stats?.output ?? cost?.output)}
-          note="tokens"
-        />
-        <MetricCard
-          label="Cache read"
-          value={fmt(cacheRead)}
-          note={hitRate != null ? `${Math.round(hitRate * 100)}% hit rate` : "tokens"}
-        />
-        <MetricCard label="Cache write" value={fmt(cacheWrite)} note="tokens" />
-        {totalInput != null && (
-          <MetricCard label="Total input" value={fmt(totalInput)} note="Including cached tokens" />
-        )}
-        {cost?.usd != null && (
-          <MetricCard
-            label="Estimated cost"
-            value={`$${Number(cost.usd).toFixed(5)}`}
-            tone="accent"
-          />
-        )}
-      </div>
-      <div className="section-head flex items-center gap-2 mb-3">
-        <Code2 size={15} />
-        <h3 className="section-title">Request details</h3>
-      </div>
-      <dl className="grid grid-cols-1 gap-3 mb-5 sm:grid-cols-2 [&_dt]:text-[10px] [&_dt]:text-muted [&_dd]:mt-1 [&_dd]:break-words">
-        <div>
-          <dt>Model</dt>
-          <dd>{model}</dd>
-        </div>
-        <div>
-          <dt>Format</dt>
-          <dd>{parsed?.format || record.format || "—"}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>
-            <Badge
-              tone={
-                status != null && status >= 400 ? "danger" : status == null ? "muted" : "success"
-              }
-            >
-              {status != null ? `HTTP ${status}` : "Pending response"}
-            </Badge>
-          </dd>
-        </div>
-        <div>
-          <dt>Stop reason</dt>
-          <dd>{parsed?.response?.stop_reason || "—"}</dd>
-        </div>
-        <div>
-          <dt>Captured</dt>
-          <dd>{record.ts != null ? new Date(record.ts).toLocaleString() : "—"}</dd>
-        </div>
-        <div>
-          <dt>Context</dt>
-          <dd>
-            {view?.system?.length || 0} system blocks · {countMessages(view?.messages)} messages ·{" "}
-            {view?.tools?.length || 0} tools
-          </dd>
-        </div>
-      </dl>
-      {error != null && (
-        <ContentBlock
-          title="Response error"
-          value={error}
-          className="border-danger-border!"
-          expanded
-        />
-      )}
+    <div className="request-details" id={id}>
+      {requestDetails(record).map((group) => (
+        <section key={group.title} aria-label={group.title}>
+          <h3>{group.title}</h3>
+          <dl>
+            {group.rows.map((row) => (
+              <div key={row.label}>
+                <dt>
+                  {row.label}
+                  {row.note && <small>{row.note}</small>}
+                </dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
     </div>
   );
 }
+
+const BADGE: Record<string, string> = {
+  error: "badge-error",
+  cancelled: "badge-warning",
+};
 
 export default function RequestDetail({
   record,
   onExport,
   navigation,
+  comparePrevious,
   activeTab,
   onTabChange,
 }: {
@@ -235,12 +112,23 @@ export default function RequestDetail({
     position: number;
     total: number;
   };
+  /**
+   * Opens Compare on this request and the one before it, which shows what this
+   * turn added. Null when there is no earlier request to compare with.
+   */
+  comparePrevious?: { seq: number; open: () => void } | null;
   activeTab?: RequestTab;
   onTabChange?: (tab: RequestTab) => void;
 }) {
   const [localTab, setLocalTab] = useState<Tab>("overview");
-  const tab = activeTab ?? localTab;
+  const tabs = requestTabs(record);
+  // A tab picked while this request is open wins over where it would open.
+  const [chosen, setChosen] = useState<{ record: string; tab: Tab }>();
+  const wanted =
+    activeTab ?? (chosen?.record === record.id ? chosen.tab : openingTab(record, localTab));
+  const tab = tabs.includes(wanted) ? wanted : "response";
   const setTab = (next: Tab) => {
+    setChosen({ record: record.id, tab: next });
     setLocalTab(next);
     onTabChange?.(next);
   };
@@ -258,15 +146,13 @@ export default function RequestDetail({
   const focusFor = (name: Tab) =>
     jump && jump.record === record.id && jump.tab === name ? jump : undefined;
   const id = useId();
+  // Stays open from one request to the next, to read the same number across them.
+  const [details, setDetails] = useState(false);
   const view = record.parsed?.view;
-  const response = record.parsed?.response;
-  const model =
-    response?.model ||
-    record.model ||
-    (typeof record.request?.body === "object" && record.request.body !== null
-      ? record.request.body.model
-      : null) ||
-    "Request inspector";
+  const modelRequest = isModelRequest(record);
+  const title = requestTitle(record);
+  const summary = requestFacts(record);
+  const url = record.request?.url || "/";
   const counts: Partial<Record<Tab, number>> = {
     system: view?.system?.length,
     // Entries of the message array, the same unit the request list counts.
@@ -274,35 +160,36 @@ export default function RequestDetail({
     tools: view?.tools?.length,
   };
   return (
-    <section className="detail-panel flex-1" aria-label="Request inspector">
+    <section className="detail-panel request-inspector flex-1" aria-label="Request inspector">
       <div className="detail-header flex-wrap">
         <div className="detail-header-main">
-          <span className="eyebrow">
-            REQUEST {record.seq != null ? String(record.seq).padStart(3, "0") : ""}
-          </span>
-          <h2 className="mt-1 truncate" title={String(model)}>
-            {String(model)}
+          <span className="eyebrow">Request {record.seq != null ? `#${record.seq}` : ""}</span>
+          <h2 className={`truncate ${modelRequest ? "" : "mono"}`} title={title}>
+            {modelRequest ? <MiddleTruncate text={title} /> : title}
           </h2>
-          <p className="truncate" title={record.request?.url}>
-            {record.request?.method || "GET"} <span>{record.request?.url || "/"}</span>
-          </p>
+          {/* A non-model request is already titled by its method and path. */}
+          {(modelRequest || url !== requestPath(url)) && (
+            <p className="truncate" title={url}>
+              {record.request?.method || "GET"} <span>{url}</span>
+            </p>
+          )}
         </div>
         <div className="detail-header-actions">
           {navigation && (
             <div className="request-navigation" aria-label="Request navigation">
               <button
                 className="button button-ghost button-sm"
-                aria-label="Back to session replay"
-                title="Back to session replay"
+                aria-label="Back to the replay"
+                title="Back to the replay (Esc)"
                 onClick={navigation.onReplay}
               >
                 <List size={14} />
-                <span>Timeline</span>
+                <span>Replay</span>
               </button>
               <button
                 className="button button-ghost icon-button"
                 aria-label="Previous request"
-                title="Previous request"
+                title="Previous request ([)"
                 disabled={!navigation.previous}
                 onClick={navigation.previous}
               >
@@ -314,7 +201,7 @@ export default function RequestDetail({
               <button
                 className="button button-ghost icon-button"
                 aria-label="Next request"
-                title="Next request"
+                title="Next request (])"
                 disabled={!navigation.next}
                 onClick={navigation.next}
               >
@@ -322,12 +209,40 @@ export default function RequestDetail({
               </button>
             </div>
           )}
+          {comparePrevious !== undefined && (
+            <button
+              className="button button-ghost button-sm"
+              aria-label={
+                comparePrevious
+                  ? `Compare with the previous request, #${comparePrevious.seq}`
+                  : "Compare with the previous request"
+              }
+              title={
+                comparePrevious
+                  ? `What this request sent that #${comparePrevious.seq} did not`
+                  : "No earlier request to this model in the session"
+              }
+              disabled={!comparePrevious}
+              onClick={comparePrevious?.open}
+            >
+              <GitCompareArrows size={14} />
+              <span>{comparePrevious ? `Compare with #${comparePrevious.seq}` : "Compare"}</span>
+            </button>
+          )}
           <CopyButton text={buildCurl(record)} label="Copy cURL" />
-          <details className="relative">
+          <details
+            className="relative"
+            onKeyDown={(event) => {
+              // Escape closes the menu before it means "back to the replay".
+              if (event.key !== "Escape" || !event.currentTarget.open) return;
+              event.currentTarget.open = false;
+              event.stopPropagation();
+            }}
+          >
             <summary className="button button-sm">
               <ArrowDownToLine size={14} /> Export
             </summary>
-            <div className="absolute right-0 top-full z-20 mt-1 grid min-w-40 gap-1 rounded-md border border-border bg-surface p-2 shadow-lg">
+            <div className="absolute right-0 top-full z-20 mt-1 grid min-w-40 gap-1 rounded-control border border-border bg-surface p-2 shadow-lg">
               {["raw", "md", "json", "har"].map((format) => (
                 <a
                   className="button button-ghost button-sm justify-start"
@@ -348,6 +263,28 @@ export default function RequestDetail({
           </details>
         </div>
       </div>
+      <div className="request-facts-bar">
+        <p className="request-facts" aria-label="Request outcome">
+          <span className={`badge ${BADGE[summary.status.tone] ?? "badge-muted"}`}>
+            {summary.status.label}
+          </span>
+          {summary.facts.map((fact) => (
+            <span key={fact}>{fact}</span>
+          ))}
+        </p>
+        <button
+          type="button"
+          className="request-facts-toggle"
+          aria-expanded={details}
+          aria-controls={`${id}-details`}
+          title="Full timing and token breakdown"
+          onClick={() => setDetails(!details)}
+        >
+          Details
+          <ChevronDown size={13} aria-hidden="true" />
+        </button>
+      </div>
+      {details && <Details record={record} id={`${id}-details`} />}
       <div
         className="tabs"
         role="tablist"
@@ -391,8 +328,7 @@ export default function RequestDetail({
         tabIndex={0}
         className="panel-body"
       >
-        {tab === "overview" && <Overview record={record} />}
-        {tab === "flow" && <FlowView key={record.id} record={record} />}
+        {tab === "overview" && <FlowView key={record.id} record={record} />}
         {tab === "system" &&
           (view?.system?.length ? (
             view.system.map((block, index) => (
@@ -401,6 +337,8 @@ export default function RequestDetail({
                 title={block.label || `System block ${index + 1}`}
                 value={block.text ?? block}
                 tags={block.cache ? <Badge tone="cache">cached</Badge> : undefined}
+                // The whole system prompt is what this tab is opened for.
+                expanded={view.system.length === 1}
               />
             ))
           ) : (

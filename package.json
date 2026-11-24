@@ -46,7 +46,7 @@
     "llm"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=26"
   },
   "devEngines": {
     "packageManager": {

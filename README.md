@@ -1,107 +1,74 @@
 # ccglass
 
-## Fork changes for debug-proxy
+**See exactly what your coding agent sends to the model.**
 
-This fork supports the Docker-based inspection setup in `debug-proxy`:
+A coding agent puts far more in front of the model than what you type: a long
+system prompt, dozens of tool definitions, reminders injected by the harness,
+and the whole conversation so far, sent again on every turn. The agent's own
+interface shows almost none of it.
 
-- `CCGLASS_BIND_HOST` overrides the proxy and dashboard bind address. It defaults
-  to `127.0.0.1`; Docker sets it to `0.0.0.0` and publishes only on host loopback.
-- The dashboard rejects non-loopback `Host` headers with HTTP 403.
-- `CCGLASS_CORS_ORIGINS` enables reverse-proxy CORS for a comma-separated list
-  of exact origins (for example, `http://localhost:5173`), or `*` for any origin
-  (like `OLLAMA_ORIGINS="*"`). Preflight requests are answered locally without
-  capturing them, and actual responses include the allowed origin (or `*`).
-  An explicit list rejects other origins with HTTP 403; requests without an
-  Origin header still work. Unset or empty leaves upstream CORS unchanged.
-- Captured request `authorization` and `x-api-key` headers are fully replaced
-  with `[REDACTED]` unless `--no-redact` is explicitly selected. Forwarded
-  authentication is unchanged; other headers, bodies, and URLs are not redacted.
-- Reverse-proxy streaming honors downstream backpressure and cancels upstream
-  work when clients disconnect. Interrupted streams are recorded as errors and
-  close the transport rather than appending error text to a started response.
-- The dashboard's **Start session** / **Stop session** controls create separate
-  recordings without interrupting forwarding. Recording begins automatically;
-  stop before starting a fresh session. Saved recordings remain selectable and
-  can also be opened in **Summary > by session**. **Reset session** clears only
-  the selected recording after confirmation, preserving its recording/stopped
-  state and other sessions. Pending responses cannot restore cleared requests.
-  In-flight requests remain assigned to the session where they were captured.
-  **Delete** in the session list permanently removes a stopped session after
-  confirmation; recording sessions cannot be deleted. Other sessions and live
-  forwarding are unaffected, and late responses cannot restore deleted captures.
-  Read-only dashboards hide recording/reset/delete controls. Docker's tmpfs storage
-  still wipes all sessions when the container stops or restarts.
-- **Export session**, also available per row in **Summary > by session**,
-  downloads a self-contained JSON file with `session`, `exportedAt`, and full
-  `entries` (reconstructed request bodies, captured headers, raw responses,
-  errors, and timing metadata). It ignores UI filters and works in read-only
-  mode. Active sessions export a snapshot, including pending requests with a
-  null response. Stop capture and wait for pending responses before exporting
-  a completed recording. Existing header redaction is preserved; other captured
-  data may contain secrets, so sanitize exports before sharing them.
+ccglass sits between the agent and the model API, records every request and
+response, and shows them in a local dashboard. It works with **Claude Code,
+Codex, OpenCode, DeepSeek-TUI, Reasonix, CodeBuddy, Kimi, Ollama, OpenRouter,
+and more**.
 
-Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js`
-to check these changes, or `npm test` for the complete upstream suite.
+## What it is for
 
-### Local development
+ccglass answers questions you cannot answer from the agent's own output:
 
-From this checkout (`vendor/ccglass` in `debug-proxy`), run:
+| Question | What ccglass shows |
+|---|---|
+| What is actually in the context? | The full system prompt, every tool schema, messages injected by the harness, and the message history of any request |
+| What did this turn add? | Each request separates earlier turns from what is new; Compare diffs any two requests |
+| Where do the tokens go? | A per-request breakdown (system prompt, tool definitions, earlier turns, new content), the cache-hit rate, and totals per session and per model |
+| Why was it slow, or why did it fail? | Latency, time to first token, HTTP status and the raw response for every call |
+| What did the agent do, and in what order? | Session replay: prompts, tool calls with their results, and replies on one timeline |
+| Which tools does the model really use? | Tools offered against tools called, with the size of each definition |
+| How do I keep or share the evidence? | A separate recording per session; export as HTTP transcript, Markdown, JSON or HAR; copy any request as cURL |
 
-```sh
-npm ci
-npm run build
-npm run dev
-```
+That makes it useful when you are writing or tuning prompts and tools,
+debugging an agent that misbehaves, comparing models or providers on the same
+task, or checking what a third-party agent sends on your behalf.
 
-This starts the proxy at **http://127.0.0.1:6656**, the production dashboard at
-**http://127.0.0.1:6657**, and the hot-reloading React dashboard at
-**http://localhost:5173**, forwarding to **http://127.0.0.1:6655** without Docker.
-Keep the host API running and point clients at
-**http://127.0.0.1:6656/openai/v1**. Stop the Docker stack first if it uses the
-same ports. Browser requests from `http://localhost:5173` are allowed by default.
+## How it works
 
-Edit components in `ui/src/`; Vite updates the development dashboard automatically.
-`npm run build` compiles TypeScript and Tailwind into `web/`, which the existing
-server serves directly at port 6657. No CDN, remote fonts, or frontend server is
-needed in production. Node watch mode restarts the backend on server-source edits.
-Captures are saved in the ignored `.ccglass/` directory and survive restarts.
-Press Ctrl-C to stop. Frontend development requires Node 22.12+ (or Node 26);
-the packaged CLI runtime still supports Node 18.
+ccglass starts a proxy on localhost, points the client at it through the
+client's base-URL environment variable, and forwards each request to the real
+API. (CodeBuddy cannot be redirected that way and uses a forward proxy
+instead: see [CodeBuddy](#codebuddy).)
 
-Use `npm run dev:ui` with an already-running backend, or `npm run dev:server`
-for the backend alone. `npm run typecheck`, `npm run test:ui`, and
-`npm run test:server` cover the frontend types, component/domain behavior,
-and backend separately. `npm test` runs both suites. Packaging builds `web/`
-automatically; generated assets are not edited or committed.
+These CLIs are Node/native apps that **ignore `HTTP_PROXY`/`HTTPS_PROXY`** — so
+Charles/mitmproxy never see the traffic, and `fetch`-patching tools break across
+updates. `ccglass` sidesteps all of it: the client does the HTTPS to the real API
+itself; you only intercept the plain HTTP hop to localhost. No CA certs, no TLS
+pinning.
 
-The UI uses small components in `ui/src/components`, one REST/SSE hook in
-`useDashboard.ts`, and pure formatting/timeline helpers in `ui/src/lib`.
-It has no router or global state framework. Full payloads for the latest 500
-requests are cached for replay; all request summaries remain searchable and
-older full requests can still be opened individually or exported.
+Three things hold throughout:
 
-Override defaults with shell environment variables (`CCGLASS_UPSTREAM`,
-`CCGLASS_PROXY_PORT`, `CCGLASS_DASHBOARD_PORT`, `CCGLASS_CORS_ORIGINS`) or CLI
-options, for example:
+- **Local only.** Captures are written to your disk, and the dashboard rejects
+  requests that do not address it as localhost. Nothing leaves the machine
+  except the request the agent was already making.
+- **Traffic is recorded, not rewritten.** Request and response bodies are
+  forwarded as they are. The reverse proxy changes two request headers: `host`,
+  and `accept-encoding` (removed so the saved response is readable). It adds
+  CORS response headers only if you set `CCGLASS_CORS_ORIGINS`. One caveat:
+  when wrapping Claude Code, ccglass registers its own inspection tools, which
+  then appear in the tool list. Pass `--no-mcp` for an unmodified context.
+- **Secrets are masked by default.** `authorization` and `x-api-key` are
+  redacted in saved captures. Prompts and responses are stored in full, so
+  treat the capture directory as sensitive.
 
-```sh
-npm run dev -- --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
-CCGLASS_CORS_ORIGINS='*' npm run dev
-```
-
-**See exactly what your coding agent sends to the model.** A lightweight
-local logging reverse-proxy + web dashboard for **Claude Code, Codex,
-OpenCode, DeepSeek-TUI, Reasonix, CodeBuddy, Kimi, Ollama, OpenRouter, and more**.
-One command, like `ollama`:
+## Quick start
 
 ```bash
 npm install -g ccglass     # or: brew install jianshuo/tap/ccglass
 ccglass
 ```
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/jianshuo/ccglass/main/docs/demo.gif" alt="ccglass dashboard — live request capture, token/cache metrics, message history with tool calls, the agent-loop flow view, and a turn-to-turn diff" width="100%">
-</p>
+The published packages are the upstream release
+([jianshuo/ccglass](https://github.com/jianshuo/ccglass)). To use what this
+fork adds, run it from a checkout: see [What this fork changes](#what-this-fork-changes)
+and [Development](#development).
 
 Run with no arguments and `ccglass` asks which client to inspect:
 
@@ -131,14 +98,6 @@ token/cache numbers, and a turn-to-turn diff.
   ● ccglass watching Codex (OpenAI) → https://api.openai.com
     dashboard: http://127.0.0.1:57633
 ```
-
-## Why
-
-These CLIs are Node/native apps that **ignore `HTTP_PROXY`/`HTTPS_PROXY`** — so
-Charles/mitmproxy never see the traffic, and `fetch`-patching tools break across
-updates. `ccglass` sidesteps all of it: the client does the HTTPS to the real API
-itself; you only intercept the plain HTTP hop to localhost. No CA certs, no TLS
-pinning.
 
 ## Providers
 
@@ -281,37 +240,64 @@ When you're done, remove the proxy settings from your IDE and press `Ctrl-C` to 
 
 ## What you get
 
-- **Live request stream** — every call appears instantly; click to expand the
-  system prompt, messages, and tools with all escaped strings unescaped. Long
-  blocks fold behind a show/hide toggle; each row shows its timestamp and a
-  tool-call count.
-- **Conversation flow** — a top-to-bottom sequence diagram of the agent loop:
-  which tool the model picked from the menu, how it ran locally, and how the
-  result was fed back. `tool_use` and `tool_result` are paired by `call_id` and
-  color-coded; skill calls are flagged.
-- **Turn-to-turn diff** — pick two requests, see exactly what context was added
-  this turn and which blocks carry a cache breakpoint.
-- **Token / cache metrics** — exact input/output/cache tokens from the response
-  `usage` and cache-hit rate. This fork does not calculate or display billing.
-- **Response reassembly + export** — streamed SSE rebuilt into the final message
-  (`stop_reason`, tool calls, usage), for both the Anthropic and OpenAI wire
-  formats; export any request to a readable **raw** HTTP transcript, Markdown,
-  JSON, or HAR.
-- **Session summary** — for the selected session, the header shows rolled-up input
-  and output tokens and cache-hit %.
-- **Per-model filter** — scope the request list, session summary, errors count,
-  and latency trend to one model from the session (**All models** by default),
-  including models seen on failed requests.
-- **Per-request latency** — end-to-end time on each list row; Overview also shows
-  total time, TTFT, generation window, and approximate input/output tok/s.
-- **Latency trend** — sparkline above the request list (avg / max per session).
-- **Copy as cURL** — from the Overview tab, copy a shell-ready replay of the
+- **Sessions**: the dashboard opens on the list of recordings, each told apart
+  by its first prompt, model, request count and how many requests failed or
+  were cancelled. Sort by any column; the last row totals them. A path at the
+  top (`Sessions › Nov 23 · 23:34:32 › Request #4`) says where you are and
+  leads back up.
+- **Replay**: a session reads as one timeline, live while it records: the
+  prompt you typed, the tool calls it caused with their results, and the
+  reply. A strip of bars shows every request, taller when slower, red when
+  failed and amber when the client cancelled it. Opening a request puts the
+  list of requests beside it, each row saying what the request was for: the
+  prompt that started it, or the tools whose output it sends back.
+- **Addresses**: the session, request and tab are in the URL
+  (`#/s/2026-11-23T23-34-32-264/r/4/messages`), so a reload keeps your place,
+  the browser's Back button moves inside the dashboard, and a place can be
+  bookmarked.
+- **Request inspector**: six views of one request. It opens on Overview:
+  everything sent, split into what goes with every request, earlier turns and
+  what is new, followed by the response. System, Messages, Tools and Response
+  each read one part in full, and HTTP has the headers and raw bodies. A line
+  above the tabs gives the outcome, timing and tokens; **Details** unfolds the
+  full breakdown.
+- **Tools view**: which of the offered tools were called and which never were,
+  sortable by size. Jump from a call to its definition and back.
+- **Compare**: see what one request sent that another did not. **Compare with
+  #N** on a request compares it with the one before it, which shows what that
+  turn added; any other pair can be picked from the list.
+- **Token and cache metrics**: exact input, output and cache tokens from the
+  response `usage`, and the cache-hit rate, per request and per session. This
+  fork does not calculate or display billing.
+- **Usage**: token totals and each model's share, for one session (its
+  **Usage** tab) or across every captured session (**Usage** beside
+  **Sessions**).
+- **Recordings**: start, stop, reset, delete and export sessions from the
+  dashboard without interrupting forwarding.
+- **Filters and search**: scope a session to one of its models (offered when it
+  called more than one), show only errors, and find text within a session or a
+  request.
+- **Latency**: end-to-end time on each list row; a request's Details add time
+  to first token, the generation window and approximate input and output
+  tok/s.
+- **Response reassembly and export**: streamed SSE is rebuilt into the final
+  message (`stop_reason`, tool calls, usage) for both the Anthropic and OpenAI
+  wire formats. Export any request as a readable **raw** HTTP transcript,
+  Markdown, JSON or HAR.
+- **Copy as cURL**: from the request header, copy a shell-ready replay of the
   proxied request.
-- **Light / dark theme** — **System**, **Light**, or **Dark** in the header;
-  choice is saved in the browser.
-- **Self-inspection (MCP)** — when wrapping Claude Code, ccglass registers its
-  own query tools so the agent can inspect the very requests it just made, right
-  inside the chat (`--no-mcp` to skip).
+- **Keyboard**: arrow keys (or `j`/`k`) move through any list, `Enter` opens
+  a request, `Esc` goes up a level, `[` and `]` step to the previous
+  and next request, `/` searches. Press `?` for the full list.
+- **Room for the payload**: one top bar instead of a sidebar, and a button to
+  hide the request list when a payload needs the whole width.
+- **Light and dark theme**: **System**, **Light** or **Dark** in the top bar;
+  the choice is saved in the browser. The typeface (Inter, SIL Open Font
+  License) is bundled, so the dashboard looks the same on every machine and
+  works offline.
+- **Self-inspection (MCP)**: when wrapping Claude Code, ccglass registers its
+  own query tools so the agent can inspect the very requests it just made,
+  right inside the chat (`--no-mcp` to skip).
 
 ## Usage
 
@@ -390,9 +376,101 @@ first time they are read.
 Auth tokens (`authorization`, `x-api-key`) are **masked by default** — pass
 `--no-redact` to keep them. Treat the log directory as sensitive regardless.
 
+## What this fork changes
+
+This fork supports the Docker-based inspection setup in `debug-proxy`:
+
+- `CCGLASS_BIND_HOST` overrides the proxy and dashboard bind address. It defaults
+  to `127.0.0.1`; Docker sets it to `0.0.0.0` and publishes only on host loopback.
+- The dashboard rejects non-loopback `Host` headers with HTTP 403.
+- `CCGLASS_CORS_ORIGINS` enables reverse-proxy CORS for a comma-separated list
+  of exact origins (for example, `http://localhost:5173`), or `*` for any origin
+  (like `OLLAMA_ORIGINS="*"`). Preflight requests are answered locally without
+  capturing them, and actual responses include the allowed origin (or `*`).
+  An explicit list rejects other origins with HTTP 403; requests without an
+  Origin header still work. Unset or empty leaves upstream CORS unchanged.
+- Captured request `authorization` and `x-api-key` headers are fully replaced
+  with `[REDACTED]` unless `--no-redact` is explicitly selected. Forwarded
+  authentication is unchanged; other headers, bodies, and URLs are not redacted.
+- Reverse-proxy streaming honors downstream backpressure and cancels upstream
+  work when clients disconnect. Interrupted streams are recorded as errors and
+  close the transport rather than appending error text to a started response.
+  The dashboard shows a stream the client closed as **cancelled**, apart from
+  requests that failed.
+- The dashboard's **Record** / **Stop** control creates separate recordings
+  without interrupting forwarding. Recording begins automatically; stop before
+  starting a fresh session. While stopped, the header says **Not saving
+  requests**: the proxy keeps forwarding and stores nothing. Saved recordings
+  are listed under **Sessions**. **Clear
+  requests…** in a session's ⋯ menu clears only that recording after an in-app
+  confirmation that names it, preserving its recording/stopped state and other
+  sessions. Pending responses cannot restore cleared requests.
+  In-flight requests remain assigned to the session where they were captured.
+  **Delete session…** in the same menu permanently removes a stopped session after
+  confirmation; recording sessions cannot be deleted. Other sessions and live
+  forwarding are unaffected, and late responses cannot restore deleted captures.
+  Read-only dashboards hide recording/reset/delete controls. Docker's tmpfs storage
+  still wipes all sessions when the container stops or restarts.
+- **Export session**, also available per row in **Sessions**,
+  downloads a self-contained JSON file with `session`, `exportedAt`, and full
+  `entries` (reconstructed request bodies, captured headers, raw responses,
+  errors, and timing metadata). It ignores UI filters and works in read-only
+  mode. Active sessions export a snapshot, including pending requests with a
+  null response. Stop capture and wait for pending responses before exporting
+  a completed recording. Existing header redaction is preserved; other captured
+  data may contain secrets, so sanitize exports before sharing them.
+
+Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js`
+to check these changes, or `npm test` for the complete upstream suite.
+
+## Development
+
+From this checkout (`vendor/ccglass` in `debug-proxy`), run:
+
+```sh
+npm ci
+npm run build
+npm run dev
+```
+
+This starts the proxy at **http://127.0.0.1:6656**, the production dashboard at
+**http://127.0.0.1:6657**, and the hot-reloading React dashboard at
+**http://localhost:5173**, forwarding to **http://127.0.0.1:6655** without Docker.
+Keep the host API running and point clients at
+**http://127.0.0.1:6656/openai/v1**. Stop the Docker stack first if it uses the
+same ports. Browser requests from `http://localhost:5173` are allowed by default.
+
+Edit components in `ui/src/`; Vite updates the development dashboard automatically.
+`npm run build` compiles TypeScript and Tailwind into `web/`, which the existing
+server serves directly at port 6657. No CDN, remote fonts, or frontend server is
+needed in production. Node watch mode restarts the backend on server-source edits.
+Captures are saved in the ignored `.ccglass/` directory and survive restarts.
+Press Ctrl-C to stop.
+
+Use `npm run dev:ui` with an already-running backend, or `npm run dev:server`
+for the backend alone. `npm run typecheck`, `npm run test:ui`, and
+`npm run test:server` cover the frontend types, component/domain behavior,
+and backend separately. `npm test` runs both suites. Packaging builds `web/`
+automatically; generated assets are not edited or committed.
+
+The UI uses small components in `ui/src/components`, one REST/SSE hook in
+`useDashboard.ts`, and pure formatting/timeline helpers in `ui/src/lib`.
+It has no router or global state framework. Full payloads for the latest 500
+requests are cached for replay; all request summaries remain searchable and
+older full requests can still be opened individually or exported.
+
+Override defaults with shell environment variables (`CCGLASS_UPSTREAM`,
+`CCGLASS_PROXY_PORT`, `CCGLASS_DASHBOARD_PORT`, `CCGLASS_CORS_ORIGINS`) or CLI
+options, for example:
+
+```sh
+npm run dev -- --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
+CCGLASS_CORS_ORIGINS='*' npm run dev
+```
+
 ## Requirements
 
-Node ≥ 18. The core proxy + dashboard have no runtime dependencies; the
+Node 26 (the current LTS) or newer. The core proxy + dashboard have no runtime dependencies; the
 optional MCP self-inspection feature (`ccglass claude`) pulls in
 `@modelcontextprotocol/sdk` and `zod`.
 

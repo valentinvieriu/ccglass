@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, downloadSession } from "./api";
 import { mergeEntries } from "./lib/entries";
+import { firstConversation, sessionIdentity, type SessionIdentity } from "./lib/session";
 import type {
   CaptureAction,
   EntrySummary,
@@ -17,11 +18,17 @@ interface DashboardData {
   live: string | null;
   controllable: boolean;
   connection: Connection;
+  /** The list of sessions has arrived, so an address can be checked against it. */
+  ready: boolean;
   session: string | null;
   entries: EntrySummary[];
   records: Record<string, RequestRecord>;
   stats: SessionStats | null;
+  /** The selected session's totals, overall first and then one row per model. */
+  modelStats: SessionStats[] | null;
   usage: UsageSummary | null;
+  /** What tells sessions apart in a list: models, failures, the first prompt. */
+  sessionIndex: Record<string, SessionIdentity>;
   loading: boolean;
   busy: boolean;
   error: string | null;
@@ -31,11 +38,14 @@ const INITIAL: DashboardData = {
   live: null,
   controllable: false,
   connection: "connecting",
+  ready: false,
   session: null,
   entries: [],
   records: {},
   stats: null,
+  modelStats: null,
   usage: null,
+  sessionIndex: {},
   loading: true,
   busy: false,
   error: null,
@@ -63,6 +73,12 @@ export function useDashboard() {
   const usageVersion = useRef(0);
   const usageRequested = useRef(false);
   const usageNames = useRef(false);
+  const known = useRef<{ sessions: string[]; live: string | null }>({ sessions: [], live: null });
+  const indexCache = useRef(new Map<string, SessionIdentity>());
+  const indexRequested = useRef(false);
+  const indexRun = useRef(0);
+  const modelStatsRequested = useRef(false);
+  const modelStatsVersion = useRef(0);
   const mutationBusy = useRef(false);
   const patch = useCallback((value: Partial<DashboardData>) => {
     if (mounted.current) setData((prev) => ({ ...prev, ...value }));
@@ -110,6 +126,62 @@ export function useDashboard() {
     },
     [patch, report],
   );
+
+  // The Usage tab of a session: its totals, then each model on its own.
+  const refreshModelStats = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    modelStatsRequested.current = true;
+    const generation = epoch.current;
+    const version = ++modelStatsVersion.current;
+    const stats = (model: string) =>
+      api<SessionStats>(`/api/session-stats?${new URLSearchParams({ session, model })}`);
+    try {
+      const all = await stats("all");
+      const rows = [all, ...(await Promise.all((all.models || []).map(stats)))];
+      if (
+        mounted.current &&
+        generation === epoch.current &&
+        version === modelStatsVersion.current
+      )
+        patch({ modelStats: rows });
+    } catch (error) {
+      if (generation === epoch.current) report(error);
+    }
+  }, [patch, report]);
+
+  // Describes each session for the list of them. A saved session does not
+  // change, so it is read once; the one being recorded is read again.
+  const refreshSessionIndex = useCallback(async () => {
+    indexRequested.current = true;
+    const run = ++indexRun.current;
+    const { sessions, live } = known.current;
+    for (const id of [...indexCache.current.keys()])
+      if (!sessions.includes(id)) indexCache.current.delete(id);
+    const wanted = sessions.filter((id) => id === live || !indexCache.current.has(id));
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(4, wanted.length) }, async () => {
+        while (next < wanted.length && run === indexRun.current && mounted.current) {
+          const session = wanted[next++];
+          try {
+            const { entries } = await api<{ entries: EntrySummary[] }>(
+              `/api/requests?${new URLSearchParams({ session })}`,
+            );
+            const first = firstConversation(entries);
+            const record = first
+              ? await api<RequestRecord>(`/api/request/${encodeURIComponent(first.id)}`)
+              : null;
+            if (!mounted.current || !known.current.sessions.includes(session)) continue;
+            indexCache.current.set(session, sessionIdentity(entries, record));
+            patch({ sessionIndex: Object.fromEntries(indexCache.current) });
+          } catch {
+            /* A session without its description is still listed and still opens. */
+          }
+        }
+      }),
+    );
+  }, [patch]);
 
   const loadRecord = useCallback(
     async (id: string, force = false): Promise<RequestRecord | null> => {
@@ -190,7 +262,17 @@ export function useDashboard() {
       sessionRef.current = session;
       modelRef.current = "all";
       setModel("all");
-      patch({ session, entries: [], records: {}, stats: null, loading: !!session, error: null });
+      modelStatsRequested.current = false;
+      modelStatsVersion.current++;
+      patch({
+        session,
+        entries: [],
+        records: {},
+        stats: null,
+        modelStats: null,
+        loading: !!session,
+        error: null,
+      });
       if (!session) return;
       const controller = new AbortController();
       controllers.current.add(controller);
@@ -219,15 +301,17 @@ export function useDashboard() {
 
   const applySessions = useCallback(
     (snapshot: SessionsSnapshot) => {
+      // Which session is read is decided by the address, not here: a session
+      // stays selected while it exists and nothing takes its place when it goes.
       const previous = sessionRef.current;
-      const session =
-        previous && snapshot.sessions.includes(previous)
-          ? previous
-          : snapshot.live || snapshot.sessions[0] || null;
+      const session = previous && snapshot.sessions.includes(previous) ? previous : null;
+      known.current = { sessions: snapshot.sessions, live: snapshot.live };
+      if (snapshot.reset) indexCache.current.delete(snapshot.reset);
       patch({
         sessions: snapshot.sessions,
         live: snapshot.live,
         controllable: snapshot.controllable,
+        ready: true,
         loading: session ? current.current.loading : false,
       });
       if (previous !== session || (snapshot.reset && snapshot.reset === session))
@@ -267,6 +351,7 @@ export function useDashboard() {
         snapshotVersion++;
         applySessions(JSON.parse((event as MessageEvent).data));
         if (usageRequested.current) void refreshUsage();
+        if (indexRequested.current) void refreshSessionIndex();
       } catch (error) {
         report(error);
       }
@@ -287,6 +372,8 @@ export function useDashboard() {
           refreshTimer = setTimeout(() => {
             void refreshStats();
             if (usageRequested.current) void refreshUsage();
+            if (modelStatsRequested.current) void refreshModelStats();
+            if (indexRequested.current) void refreshSessionIndex();
           }, 180);
         }
       } catch (error) {
@@ -310,7 +397,17 @@ export function useDashboard() {
       controllers.current.clear();
       sessionRef.current = null;
     };
-  }, [applySessions, loadRecord, patch, refreshStats, refreshUsage, report, selectSession]);
+  }, [
+    applySessions,
+    loadRecord,
+    patch,
+    refreshModelStats,
+    refreshSessionIndex,
+    refreshStats,
+    refreshUsage,
+    report,
+    selectSession,
+  ]);
 
   const setModelFilter = useCallback(
     (model: string) => {
@@ -321,19 +418,22 @@ export function useDashboard() {
     [refreshStats],
   );
   const changeCapture = useCallback(
-    async (action: CaptureAction, session = sessionRef.current) => {
-      if (mutationBusy.current) return;
+    async (
+      action: CaptureAction,
+      session = sessionRef.current,
+    ): Promise<SessionsSnapshot | undefined> => {
+      if (mutationBusy.current) return undefined;
       if (!current.current.controllable) {
         patch({ error: "Capture controls are unavailable in read-only mode." });
-        return;
+        return undefined;
       }
       if (action === "delete" && session === current.current.live) {
         patch({ error: "Stop this session before deleting it." });
-        return;
+        return undefined;
       }
       if (["reset", "delete"].includes(action) && !session) {
         patch({ error: "Select a session first." });
-        return;
+        return undefined;
       }
       mutationBusy.current = true;
       patch({ busy: true, error: null });
@@ -344,19 +444,23 @@ export function useDashboard() {
         const snapshot = await api<SessionsSnapshot>(`/api/sessions/${action}${query}`, {
           method: "POST",
         });
-        if (!mounted.current) return;
+        if (!mounted.current) return undefined;
+        if (action === "reset") indexCache.current.delete(session!);
         applySessions(snapshot);
-        if (action === "start") await selectSession(snapshot.live);
         if (action === "reset" && session === sessionRef.current) await selectSession(session);
+        if (indexRequested.current) void refreshSessionIndex();
         if (usageRequested.current) await refreshUsage();
+        // The caller decides where to go: a new recording is opened by its address.
+        return snapshot;
       } catch (error) {
         report(error);
+        return undefined;
       } finally {
         mutationBusy.current = false;
         patch({ busy: false });
       }
     },
-    [applySessions, patch, refreshUsage, report, selectSession],
+    [applySessions, patch, refreshSessionIndex, refreshUsage, report, selectSession],
   );
   const exportSession = useCallback(
     async (session = sessionRef.current) => {
@@ -379,6 +483,8 @@ export function useDashboard() {
     changeCapture,
     exportSession,
     refreshUsage,
+    refreshModelStats,
+    refreshSessionIndex,
     loadRecord,
     loadRecords,
     clearError,

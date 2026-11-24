@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { RequestRecord } from "../types";
 import { approxTokens, matchesFilter, outcome, type FlowFilter, type FlowZone } from "../lib/flow";
-import { oneLine } from "../lib/format";
+import { fmtApproxTokens, fmtChars, oneLine } from "../lib/format";
 import { buildMessages, type MessageGroup, type MessagePart, type Segment } from "../lib/messages";
 import { TAG_INFO } from "../lib/timeline";
 import { FilterBar, Highlight } from "./FlowItems";
@@ -47,7 +47,8 @@ const PREVIEW_LINES = 8;
 const PREVIEW_CHARS = 600;
 
 const isLong = (text: string) => text.length > 900 || text.split("\n", 16).length > 14;
-const chars = (count: number) => `${count.toLocaleString()} ${count === 1 ? "char" : "chars"}`;
+// Sizes read in tokens, the unit the context is limited in; hover shows characters.
+const chars = (count: number) => fmtApproxTokens(count);
 const position = (group: number, path?: string) => path ?? `#${group}`;
 
 function partMatches(query: string, part: MessagePart) {
@@ -151,7 +152,9 @@ function Envelope({ segment, reading }: { segment: Segment; reading: Reading }) 
         <ChevronRight size={12} aria-hidden="true" />
         <span className="msg-envelope-name mono">{segment.name}</span>
         {!open && <span className="msg-envelope-preview">{oneLine(inner, 160)}</span>}
-        <span className="msg-size">{chars(segment.text.length)}</span>
+        <span className="msg-size" title={fmtChars(segment.text.length)}>
+          {chars(segment.text.length)}
+        </span>
       </button>
       {open && (
         <div className="msg-body msg-mono msg-quiet">
@@ -319,7 +322,7 @@ function Part({
     return (
       <p className={`${frame} msg-note`} id={domId}>
         Empty text block
-        {item.text.length ? ` · ${chars(item.text.length)} of whitespace` : ""}
+        {item.text.length ? ` · ${fmtChars(item.text.length)} of whitespace` : ""}
       </p>
     );
 
@@ -400,7 +403,9 @@ export function MessageEntry({
             {place}
             {wire ? ` · role ${group.role}` : ""}
           </span>
-          <span className="msg-size">{chars(group.chars)}</span>
+          <span className="msg-size" title={fmtChars(group.chars)}>
+            {chars(group.chars)}
+          </span>
           <CopyButton
             text={text}
             label={`Copy ${group.label.toLowerCase()} ${place}`}
@@ -529,8 +534,7 @@ export default function MessagesView({
           {model.groups.length === 1 ? "message" : "messages"}
           {model.parts.length !== model.groups.length &&
             ` · ${model.parts.length.toLocaleString()} content blocks`}
-          {` · ${chars(model.chars)}`}
-          {model.tokens != null && ` · ~${approxTokens(model.tokens)} tok`}
+          {` · ${model.tokens != null ? `~${approxTokens(model.tokens)} tok` : chars(model.chars)}`}
         </span>
         {largest && largestGroup && model.parts.length > 3 && (
           <span>
@@ -558,16 +562,6 @@ export default function MessagesView({
         onSearch={setSearch}
         searchLabel="Find in messages"
         searchRef={searchInput}
-        hint={
-          <>
-            {!!errors.length && (
-              <>
-                <kbd>e</kbd> next error ·{" "}
-              </>
-            )}
-            <kbd>/</kbd> find
-          </>
-        }
         actions={
           <>
             {hasNew && !narrowed && (

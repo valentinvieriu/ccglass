@@ -1,14 +1,12 @@
 import { useId, useMemo } from "react";
 import { FileText } from "lucide-react";
 import type { RequestRecord } from "../types";
-import { fmtMs } from "../lib/format";
 import { buildReply } from "../lib/messages";
+import { recordCancelled, recordError, recordFailed, responseSentence } from "../lib/request";
 import { ContentBlock } from "./JsonView";
 import { MessageEntry, type Reading } from "./MessagesView";
 
-export function responseError(record: RequestRecord) {
-  return record.parsed?.response?.error ?? record.response?.error ?? record.error;
-}
+export const responseError = recordError;
 
 // One message, read in full: nothing to search and nothing to fold away.
 const READING: Reading = { query: "", expand: { open: true, version: 0 }, open: true };
@@ -41,40 +39,40 @@ export default function ResponseView({
       </div>
     );
 
-  const status = record.response?.status;
-  const stats = record.parsed?.usageStats ?? record.parsed?.cost;
-  const output = stats?.output ?? response?.usage?.output_tokens;
-  const latency = record.latencyMs ?? record.timing?.totalMs;
+  // The client hanging up is told apart from the API failing.
+  const cancelled = recordCancelled(record);
+  const failed = recordFailed(record);
   const awaiting = reply?.parts.filter((part) => part.item.kind === "tool").length ?? 0;
   const raw = record.response?.raw ?? response ?? record.response;
+  const sentence = responseSentence(record);
+  // A stream that failed or carried no reply is not worth calling one.
+  const streamed = !!response?.streamed && !failed && !cancelled && !!reply;
   return (
     <div className="resp-view">
-      <div className="insp-summary">
-        <span className="resp-facts">
-          <span
-            className={`badge ${status == null ? "badge-muted" : status >= 400 ? "badge-error" : "badge-success"}`}
-          >
-            {status != null ? `HTTP ${status}` : "No status"}
+      {(response?.stop_reason || streamed || sentence) && (
+        <div className="insp-summary">
+          <span className="resp-facts">
+            {response?.stop_reason && (
+              <span>
+                Stopped: <strong>{response.stop_reason}</strong>
+              </span>
+            )}
+            {streamed && <span>streamed</span>}
           </span>
-          {response?.stop_reason && (
-            <span>
-              Stopped: <strong>{response.stop_reason}</strong>
+          {sentence && (
+            <span className={failed ? "resp-failed" : cancelled ? "resp-cancelled" : undefined}>
+              {sentence}
             </span>
           )}
-          {response?.streamed && <span>streamed</span>}
-        </span>
-        <span>
-          {output != null && (
-            <>
-              <strong>{Number(output).toLocaleString()}</strong> tokens
-            </>
-          )}
-          {latency != null && `${output != null ? " in " : ""}${fmtMs(latency)}`}
-          {record.timing?.ttftMs != null && ` · first token after ${fmtMs(record.timing.ttftMs)}`}
-        </span>
-      </div>
+        </div>
+      )}
 
-      {error != null && (
+      {cancelled && !reply && (
+        <p className="resp-note">
+          No part of the response was saved: the proxy keeps a response once it has finished.
+        </p>
+      )}
+      {error != null && !cancelled && (
         <ContentBlock
           title="Response error"
           value={error}
@@ -102,7 +100,8 @@ export default function ResponseView({
           )}
         </div>
       ) : (
-        raw != null && (
+        raw != null &&
+        !cancelled && (
           <>
             {error == null && (
               <p className="resp-note">

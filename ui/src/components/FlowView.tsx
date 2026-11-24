@@ -12,7 +12,7 @@ import {
   type FlowZone,
 } from "../lib/flow";
 import { fmtMs } from "../lib/format";
-import { FilterBar, ItemPreview, ItemRow, KEY_HINT } from "./FlowItems";
+import { FilterBar, ItemPreview, ItemRow } from "./FlowItems";
 
 const FILTERS: [FlowFilter, string][] = [
   ["all", "All"],
@@ -54,6 +54,7 @@ export default function FlowView({ record }: { record: RequestRecord }) {
   const id = useId();
   const [filter, setFilter] = useState<FlowFilter>("all");
   const [search, setSearch] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [open, setOpen] = useState<Partial<Record<FlowZone, boolean>>>({});
   const firstOf = (zone: FlowZone) => items.find((item) => item.zone === zone)?.id;
   const [picked, setPicked] = useState<string | undefined>(
@@ -90,6 +91,11 @@ export default function FlowView({ record }: { record: RequestRecord }) {
     if (!itemId) return;
     focusPicked.current = focus;
     setPicked(itemId);
+  };
+  // A click asks to read the item: where the pane covers the list, that opens it.
+  const pick = (itemId: string) => {
+    select(itemId);
+    setPreviewOpen(true);
   };
   const reveal = (itemId: string | undefined) => {
     const item = items.find((candidate) => candidate.id === itemId);
@@ -221,10 +227,9 @@ export default function FlowView({ record }: { record: RequestRecord }) {
         onSearch={setSearch}
         searchLabel="Find in this request"
         searchRef={searchInput}
-        hint={KEY_HINT}
       />
 
-      <div className="flow-split">
+      <div className="flow-split" data-preview={previewOpen ? "open" : "closed"}>
         <div className="flow-list" onKeyDown={onKeyDown}>
           {zones.map((zone) => {
             const heading = (
@@ -257,14 +262,14 @@ export default function FlowView({ record }: { record: RequestRecord }) {
                     domId={rowId(item)}
                     query={query}
                     selected={selected?.id === item.id}
-                    onSelect={select}
+                    onSelect={pick}
                   />
                 ))}
                 {zone.id === "response" && !zone.all.length && (
                   <p className="flow-zone-note">
                     {flow.waiting
                       ? "Waiting for the model response…"
-                      : "No parsed response steps. See Response or Raw for the captured payload."}
+                      : "No parsed response steps. See Response or HTTP for the captured payload."}
                   </p>
                 )}
                 {zone.id === "response" && awaiting && !searching && (
@@ -293,7 +298,14 @@ export default function FlowView({ record }: { record: RequestRecord }) {
         </div>
         <ItemPreview
           item={selected}
-          where={selected ? WHERE[selected.zone][selected.kind === "tool" ? 1 : 0] : undefined}
+          where={
+            !selected
+              ? undefined
+              : selected.kind === "failed" || selected.kind === "cancelled"
+                ? "How this request ended. No reply came back."
+                : WHERE[selected.zone][selected.kind === "tool" ? 1 : 0]
+          }
+          onClose={() => setPreviewOpen(false)}
         />
       </div>
     </div>

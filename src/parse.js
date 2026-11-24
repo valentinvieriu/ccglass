@@ -49,8 +49,7 @@ export function reassembleResponse(raw) {
   // body as a UTF-8 string (src/proxy.js), but each frame's ASCII payload —
   // `{"bytes":"<base64>", ...}`, base64-decoding to one Anthropic event —
   // survives intact. When the body carries no `data:` SSE lines but does carry
-  // such envelopes, recover the events from them. See
-  // docs/cost-and-model-bucketing.md.
+  // such envelopes, recover the events from them.
   if (!/^data:/m.test(raw) && /"bytes":"[A-Za-z0-9+/=]+"/.test(raw)) {
     for (const match of raw.matchAll(/"bytes":"([A-Za-z0-9+/=]+)"/g)) {
       let ev;

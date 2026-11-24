@@ -181,6 +181,8 @@ export interface TimelineStep {
   callId?: string;
   isError?: boolean;
   latest?: boolean;
+  /** On a closing "stop" step: the client hung up before the response finished. */
+  cancelled?: boolean;
   count?: number;
   tools?: { name: string; description: string }[];
 }

@@ -9,10 +9,17 @@ import {
   smartSummary,
   humanText,
 } from "../src/lib/timeline";
-import { buildFlow } from "../src/lib/flow";
+import { buildFlow, previewHeading, stepItem } from "../src/lib/flow";
 import { buildReplay } from "../src/lib/replay";
 import { buildCurl, shellQuote } from "../src/lib/curl";
-import { mergeEntries, visibleEntries } from "../src/lib/entries";
+import {
+  comparePick,
+  isCancelled,
+  isFailed,
+  mergeEntries,
+  previousRequest,
+  visibleEntries,
+} from "../src/lib/entries";
 
 function record(id: string, content: any[] = []): RequestRecord {
   return {
@@ -82,6 +89,31 @@ describe("timeline normalization", () => {
     interrupted.response = { error: "client disconnected" };
     interrupted.parsed!.response = null;
     expect(flowSteps(interrupted).at(-1)?.text).toContain("client disconnected");
+    // The client hanging up closes the turn as cancelled, not as an error.
+    expect(flowSteps(interrupted).at(-1)).toMatchObject({ kind: "stop", cancelled: true, latest: true });
+    const flow = buildFlow(interrupted);
+    expect(flow.items.at(-1)).toMatchObject({
+      zone: "response",
+      kind: "cancelled",
+      name: "Cancelled",
+      summary: "The client closed the connection before the response finished",
+    });
+    // The zeros reported for a response that never finished are not a measurement.
+    interrupted.parsed = {
+      ...interrupted.parsed,
+      estTokens: 900,
+      usageStats: { totalInput: 0, output: 0, cacheRead: 0 },
+    };
+    expect(buildFlow(interrupted)).toMatchObject({
+      inputTokens: 900,
+      estimated: true,
+      outputTokens: null,
+      cacheRead: null,
+    });
+    interrupted.response = { error: "socket hang up" };
+    expect(flowSteps(interrupted).at(-1)).toMatchObject({ kind: "stop", text: "error: socket hang up" });
+    expect(flowSteps(interrupted).at(-1)?.cancelled).toBeUndefined();
+    expect(buildFlow(interrupted).items.at(-1)?.kind).toBe("failed");
   });
   it("replaces pending tool rows with updated full records without duplicating them", () => {
     const item = record("1", [
@@ -186,6 +218,50 @@ describe("flow and replay models", () => {
     expect(first.items.filter((item) => item.zone === "new")).toHaveLength(1);
   });
 
+  it("leaves out an empty text block that only accompanies a tool call", () => {
+    const blank = { role: "assistant", type: "text", text: " " };
+    const flow = buildFlow(
+      chat("2", [prompt, blank, call, result], [
+        { type: "text", text: "\n" },
+        { type: "tool_use", id: "next", name: "Bash", input: { command: "ls" } },
+      ]),
+    );
+    expect(flow.items.filter((item) => item.kind === "assistant")).toHaveLength(0);
+    expect(flow.items.filter((item) => item.kind === "tool").map((item) => item.id)).toEqual(["m-2", "r-1"]);
+    // Ids still follow the position in the request, so Messages can be linked to.
+    const records = { "session/2": chat("2", [prompt], [{ type: "text", text: " " }, { type: "tool_use", id: "c", name: "Bash", input: {} }]) };
+    const entries = [{ id: "session/2", session: "session", seq: 2, ts: 2, model: "local", status: 200, nMessages: 1 }] as EntrySummary[];
+    const replay = buildReplay(entries, records, buildTimeline(Object.values(records)), false);
+    expect(replay.lines.map((line) => line.item.kind)).toEqual(["system", "tools", "user", "tool"]);
+    // A reply with nothing in it at all is still worth a row.
+    const empty = buildFlow(chat("3", [prompt], [{ type: "text", text: "" }]));
+    expect(empty.items.at(-1)).toMatchObject({ kind: "assistant", summary: "Empty message" });
+  });
+
+  it("titles the preview without saying the same thing twice", () => {
+    const heading = (step: TimelineStep) => previewHeading(stepItem(step, "x", "new"));
+    expect(heading({ kind: "user", text: "Run the tests" })).toEqual({ eyebrow: "", title: "User prompt" });
+    expect(heading({ kind: "user", text: reminder.text })).toEqual({
+      eyebrow: "Sent in the user role · system-reminder",
+      title: "Harness message",
+    });
+    expect(heading({ kind: "assistant", text: "Done." })).toEqual({ eyebrow: "", title: "Assistant message" });
+    expect(heading({ kind: "assistant", label: "refusal", text: "{}" }).title).toBe("Assistant message · refusal");
+    expect(heading({ kind: "tool_use", name: "Bash", text: '{"command":"ls"}' })).toEqual({
+      eyebrow: "Tool call",
+      title: "Bash",
+    });
+    const flow = buildFlow(chat("1", [prompt], []));
+    expect(previewHeading(flow.items.find((item) => item.kind === "tools")!)).toEqual({
+      eyebrow: "1 tool offered to the model",
+      title: "Tool definitions",
+    });
+    expect(previewHeading(flow.items.find((item) => item.kind === "system")!)).toEqual({
+      eyebrow: "",
+      title: "System prompt",
+    });
+  });
+
   it("recognises a tool call that was streamed without an id once the client names it", () => {
     const first = chat("1", [prompt], [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }]);
     const second = chat("2", [prompt, call, result], [{ type: "text", text: "One test fails." }]);
@@ -261,5 +337,52 @@ describe("request state and export", () => {
     expect(curl).not.toContain("content-length");
     expect(shellQuote("it's fine")).toBe("'it'" + String.fromCharCode(92) + "''s fine'");
     expect(curl).toContain(" " + String.fromCharCode(92, 10) + "  ");
+  });
+});
+
+describe("request outcomes and comparison picks", () => {
+  const entry = (seq: number, extra: Partial<EntrySummary> = {}): EntrySummary => ({
+    id: `s/${seq}`,
+    session: "s",
+    seq,
+    ts: seq,
+    model: "main",
+    status: 200,
+    nMessages: seq,
+    ...extra,
+  });
+
+  it("counts a client that hung up as cancelled, and everything else without a response as failed", () => {
+    const cancelled = entry(1, { status: null, error: "client disconnected" });
+    const dropped = entry(2, { status: null, error: "socket hang up" });
+    expect([isCancelled(cancelled), isFailed(cancelled)]).toEqual([true, false]);
+    expect([isCancelled(dropped), isFailed(dropped)]).toEqual([false, true]);
+    expect([isCancelled(entry(3)), isFailed(entry(3))]).toEqual([false, false]);
+    expect(isFailed(entry(4, { status: 500, error: "client disconnected" }))).toBe(true);
+    expect(visibleEntries([cancelled, dropped, entry(3)], "all", true)).toEqual([dropped]);
+  });
+
+  it("compares a request with the one before it to the same model", () => {
+    const entries = [
+      entry(1),
+      entry(2, { model: "titles" }),
+      entry(3, { model: null, nMessages: 0 }),
+      entry(4),
+    ];
+    expect(previousRequest(entries, "s/4")?.id).toBe("s/1");
+    expect(previousRequest(entries, "s/1")).toBeUndefined();
+    expect(previousRequest(entries, "s/2")).toBeUndefined();
+    expect(previousRequest(entries, "unknown")).toBeUndefined();
+  });
+
+  it("makes a clicked request B and leaves the baseline alone", () => {
+    const entries = [entry(1), entry(2), entry(3), entry(4)];
+    expect(comparePick(entries, ["s/1", "s/2"], "s/4")).toEqual(["s/1", "s/4"]);
+    // Clicking the baseline swaps the two; clicking B changes nothing.
+    expect(comparePick(entries, ["s/1", "s/4"], "s/1")).toEqual(["s/4", "s/1"]);
+    expect(comparePick(entries, ["s/1", "s/4"], "s/4")).toEqual(["s/1", "s/4"]);
+    // With no baseline yet, it is the request before the clicked one.
+    expect(comparePick(entries, [], "s/3")).toEqual(["s/2", "s/3"]);
+    expect(comparePick(entries, [], "s/1")).toEqual(["", "s/1"]);
   });
 });

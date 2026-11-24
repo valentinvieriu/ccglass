@@ -254,7 +254,7 @@ describe("messages tab", () => {
     expect(within(message("Tool output · messages[2]")).getByText(/role user/)).toBeInTheDocument();
     expect(screen.getByText("Earlier turns")).toBeInTheDocument();
     expect(screen.getByText("New since the last reply")).toBeInTheDocument();
-    expect(screen.getByText(/whitespace/)).toHaveTextContent("Empty text block · 1 char of whitespace");
+    expect(screen.getByText(/whitespace/)).toHaveTextContent("Empty text block · 1 character of whitespace");
   });
 
   it("keeps harness envelopes folded beside the typed text until they are opened", () => {

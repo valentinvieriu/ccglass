@@ -1,55 +1,115 @@
-import { Activity, AlertCircle, Search, ChevronRight } from "lucide-react";
-import { memo, useMemo, useState } from "react";
-import { groupRetries, visibleEntries } from "../lib/entries";
-import { fmtMs } from "../lib/format";
-import type { EntrySummary } from "../types";
+import { AlertCircle, Search, User, Zap } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { groupRetries, isFailed, visibleEntries } from "../lib/entries";
+import { keyTarget } from "../lib/flow";
+import { fmtDateTime, plural } from "../lib/format";
+import { endpointLabel, requestLead, rowFacts, rowStatus } from "../lib/requestRow";
+import type { EntrySummary, RequestRecord } from "../types";
+import { MiddleTruncate } from "./MiddleTruncate";
 
 interface Props {
   entries: EntrySummary[];
+  /** Loaded requests. A row says what its request was for once its record is here. */
+  records?: Record<string, RequestRecord>;
   models: string[];
   model: string;
   selected: string | null;
+  /** The two requests being compared, baseline first. */
   picks: string[];
+  /** Compare is open: rows are marked A and B, and a click picks B. */
+  comparing?: boolean;
   isLive: boolean;
   onModel: (model: string) => void;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string) => void;
 }
+
+const NO_RECORDS: Record<string, RequestRecord> = {};
 
 export const RequestList = memo(function RequestList({
   entries,
+  records = NO_RECORDS,
   models,
   model,
   selected,
   picks,
+  comparing = false,
   isLive,
   onModel,
   onSelect,
 }: Props) {
   const [search, setSearch] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const filterInput = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  // The marks are no use off screen: bring the compared requests into view.
+  const compared = comparing ? picks.join("|") : "";
+  useEffect(() => {
+    if (!compared) return;
+    for (const mark of list.current?.querySelectorAll(".request-pick") ?? [])
+      mark.closest(".request-row")?.scrollIntoView?.({ block: "nearest" });
+  }, [compared]);
   const scoped = useMemo(() => visibleEntries(entries, model), [entries, model]);
-  const errors = scoped.filter((entry) => (entry.status ?? 0) >= 400 || entry.error != null).length;
-  const filtered = useMemo(
-    () =>
-      visibleEntries(entries, model, errorsOnly).filter((entry) =>
-        `${entry.model || ""} ${entry.seq} ${entry.url || ""} ${entry.status || ""}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
-      ),
-    [entries, model, errorsOnly, search],
-  );
+  const failed = scoped.filter(isFailed).length;
+  // Times in a session read as "how far in": the first request is the zero.
+  const origin = entries[0] ? (entries[0].startedAt ?? entries[0].ts) : null;
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase();
+    return visibleEntries(entries, model, errorsOnly).filter((entry) => {
+      const record = records[entry.id];
+      const lead = record ? requestLead(record)?.text : "";
+      return `${lead || ""} ${entry.model || ""} ${entry.seq} ${entry.url || ""} ${entry.status || ""}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [entries, records, model, errorsOnly, search]);
   const rows = useMemo(() => groupRetries(filtered), [filtered]);
+  // One model in the whole session says nothing on every row.
+  const showModel = models.length > 1;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === "/") {
+      event.preventDefault();
+      filterInput.current?.focus();
+      return;
+    }
+    const listed = [...event.currentTarget.querySelectorAll<HTMLElement>(".request-row")].filter((element) => !element.closest("details:not([open])"));
+    const target = keyTarget(event.key, listed, document.activeElement as HTMLElement);
+    if (!target) return;
+    event.preventDefault();
+    target.focus();
+    target.scrollIntoView?.({ block: "nearest" });
+  };
+  const row = (entry: EntrySummary) => (
+    <RequestRow
+      key={entry.id}
+      entry={entry}
+      record={records[entry.id]}
+      origin={origin}
+      showModel={showModel}
+      // While comparing, the two picks are what is on screen, not the open request.
+      selected={comparing ? picks.includes(entry.id) : selected === entry.id}
+      pick={!comparing ? undefined : picks[0] === entry.id ? "A" : picks[1] === entry.id ? "B" : undefined}
+      onSelect={onSelect}
+    />
+  );
   return (
     <aside className="request-panel" aria-label="Captured requests">
       <div className="request-toolbar">
         <div className="search-wrap">
           <Search size={12} />
           <input
+            ref={filterInput}
             className="search-input"
-            aria-label="Search requests"
-            placeholder="Search requests…"
+            aria-label="Filter requests by prompt, tool, model, status or URL"
+            placeholder="Filter by prompt, tool or model"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              setSearch("");
+              event.currentTarget.blur();
+            }}
           />
           <span className="panel-count" aria-label="Requests shown">
             {filtered.length} / {entries.length}
@@ -70,41 +130,32 @@ export const RequestList = memo(function RequestList({
           <button
             className={`button button-sm ${errorsOnly ? "button-danger" : ""}`}
             aria-pressed={errorsOnly}
+            aria-label={`Failed requests (${failed})`}
+            title="Show only requests that returned an error or got no response"
             onClick={() => setErrorsOnly(!errorsOnly)}
           >
             <AlertCircle size={11} />
-            Errors ({errors})
+            Failed ({failed})
           </button>
         </div>
       </div>
-      <div className="request-list">
-        <button
-          className={`request-live-row ${selected == null ? "active" : ""}`}
-          aria-pressed={selected == null}
-          onClick={() => onSelect(null)}
-        >
-          <Activity size={13} />
-          {isLive ? "Live stream" : "Session replay"}
-          <ChevronRight size={12} className="ml-auto" />
-        </button>
+      {/* Arrow keys move between rows, so the list is one stop for the Tab key. */}
+      <div className="request-list" ref={list} onKeyDown={onKeyDown}>
         {rows.map((entry) => (
           <div key={entry.id}>
-            <RequestRow
-              entry={entry}
-              selected={selected === entry.id || picks.includes(entry.id)}
-              onSelect={onSelect}
-            />
+            {row(entry)}
             {!!entry.retries.length && (
-              <details className="retry-group">
-                <summary>{entry.retries.length} similar requests</summary>
-                {entry.retries.map((retry) => (
-                  <RequestRow
-                    key={retry.id}
-                    entry={retry}
-                    selected={selected === retry.id || picks.includes(retry.id)}
-                    onSelect={onSelect}
-                  />
-                ))}
+              <details
+                className="retry-group"
+                // An open or compared request must not sit folded out of sight.
+                open={
+                  entry.retries.some((retry) =>
+                    comparing ? picks.includes(retry.id) : retry.id === selected,
+                  ) || undefined
+                }
+              >
+                <summary>{plural(entry.retries.length, "similar request")}</summary>
+                {entry.retries.map(row)}
               </details>
             )}
           </div>
@@ -114,7 +165,9 @@ export const RequestList = memo(function RequestList({
             <p>
               {entries.length
                 ? "No requests match these filters."
-                : "Requests will appear here as they are captured."}
+                : isLive
+                  ? "Requests will appear here as they are captured."
+                  : "This saved session has no requests."}
             </p>
           </div>
         )}
@@ -123,54 +176,78 @@ export const RequestList = memo(function RequestList({
   );
 });
 
-// Requests without a model (model listings, health probes) are identified by
-// what they called instead of a generic placeholder.
-function endpointLabel(entry: EntrySummary) {
-  if (!entry.url) return null;
-  let path = entry.url;
-  try {
-    path = new URL(entry.url, "http://local").pathname;
-  } catch {
-    /* keep the raw value */
-  }
-  return `${entry.method || "GET"} ${path}`;
-}
-
 const RequestRow = memo(function RequestRow({
   entry,
+  record,
+  origin,
+  showModel,
   selected,
+  pick,
   onSelect,
 }: {
   entry: EntrySummary;
+  record: RequestRecord | undefined;
+  /** When the session's first request started; rows show the time since then. */
+  origin: number | null;
+  showModel: boolean;
   selected: boolean;
+  /** Which side of the comparison this request is. */
+  pick?: "A" | "B";
   onSelect: (id: string) => void;
 }) {
-  const failed = (entry.status ?? 0) >= 400 || entry.error != null;
+  // Requests without a model (model listings, health probes) are identified by
+  // what they called instead of a generic placeholder.
   const endpoint = entry.model ? null : endpointLabel(entry);
-  const facts = [
-    entry.ts ? new Date(entry.ts).toLocaleTimeString() : null,
-    entry.latencyMs != null ? fmtMs(entry.latencyMs) : null,
-    entry.nMessages ? `${entry.nMessages} msg` : null,
-    entry.nTools ? `${entry.nTools} tools` : null,
-    entry.nToolUse ? `${entry.nToolUse} calls` : null,
-  ].filter(Boolean);
+  const lead = record ? requestLead(record) : null;
+  const status = rowStatus(entry);
+  const started = entry.startedAt ?? entry.ts;
+  const facts = rowFacts(entry, record, origin);
+  const title = [
+    pick === "A" ? "A, the baseline of the comparison" : pick === "B" ? "B, compared with A" : null,
+    lead?.kind === "tools" ? `Sends back the output of ${lead.text}` : lead?.text,
+    entry.model || endpoint,
+    started ? fmtDateTime(started) : null,
+    [
+      entry.nMessages ? `${entry.nMessages} msg` : null,
+      entry.nTools ? plural(entry.nTools, "tool") : null,
+      entry.nToolUse ? plural(entry.nToolUse, "call") : null,
+    ]
+      .filter(Boolean)
+      .join(", "),
+    entry.format ? `${entry.format} format` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <button
-      className={`request-row ${selected ? "request-row-selected" : ""} ${entry.model ? "" : "request-row-minor"}`}
+      className={`request-row ${selected ? "request-row-selected" : ""} ${lead || entry.model ? "" : "request-row-minor"}`}
       aria-pressed={selected}
-      title={entry.format ? `${entry.format} format` : undefined}
+      // The open request is the list's tab stop; the arrow keys reach the rest.
+      tabIndex={selected ? 0 : -1}
+      title={title || undefined}
       onClick={() => onSelect(entry.id)}
     >
       <div className="request-title">
-        <span className={`model-name ${endpoint ? "mono" : ""}`}>
-          {entry.model || endpoint || "Unknown model"}
-        </span>
+        {pick && <b className="request-pick">{pick}</b>}
+        {lead?.kind === "prompt" && <User size={12} aria-hidden="true" />}
+        {lead?.kind === "harness" && <Zap size={12} aria-hidden="true" />}
+        {lead?.kind === "tools" && <span aria-hidden="true">→</span>}
+        {lead ? (
+          <span className={`request-lead request-lead-${lead.kind}`}>{lead.text}</span>
+        ) : (
+          <span className={`request-lead request-lead-model ${endpoint ? "mono" : ""}`}>
+            {entry.model || endpoint || "Unknown model"}
+          </span>
+        )}
         <span className="request-seq">#{entry.seq}</span>
-        <span className={`request-status ${failed ? "error" : ""}`}>
-          {entry.error != null ? "error" : entry.pending ? "pending" : (entry.status ?? "—")}
-        </span>
+        {status && <span className={`request-status ${status.tone}`}>{status.label}</span>}
       </div>
-      <div className="request-time">{facts.length ? facts.join(" · ") : "—"}</div>
+      <div className="request-time">
+        <span>{facts.length ? facts.join(" · ") : "—"}</span>
+        {showModel && lead && entry.model && (
+          <MiddleTruncate className="request-model" text={entry.model} />
+        )}
+      </div>
     </button>
   );
 });

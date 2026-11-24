@@ -25,7 +25,7 @@ function HeaderTable({ title, headers }: { title: string; headers: Headers }) {
   return (
     <section className="detail-card http-headers">
       <div className="detail-card-header flex-wrap">
-        <h3 className="m-0 mr-auto font-semibold">{title}</h3>
+        <h3 className="m-0 mr-auto font-strong">{title}</h3>
         <div className="flex flex-wrap items-center gap-1">
           <span className="code-size">
             {entries.length} {entries.length === 1 ? "header" : "headers"}
@@ -98,7 +98,7 @@ export default function HttpView({ record }: { record: RequestRecord }) {
           {response ? (
             <>
               <span
-                className={`badge ${status == null ? "badge-muted" : status >= 400 ? "badge-error" : "badge-success"}`}
+                className={`badge ${status == null ? "badge-muted" : status >= 400 ? "badge-error" : "badge-muted"}`}
               >
                 {status != null ? `HTTP ${status}` : "No status"}
               </span>

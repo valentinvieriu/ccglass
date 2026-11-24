@@ -1,6 +1,8 @@
 import { memo, type ReactNode, type Ref } from "react";
 import {
+  ArrowLeft,
   ArrowLeftRight,
+  Ban,
   Brain,
   Cpu,
   FileText,
@@ -14,9 +16,11 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { outcome, type FlowFilter, type FlowItem } from "../lib/flow";
+import { outcome, previewHeading, type FlowFilter, type FlowItem } from "../lib/flow";
+import { fmtApproxTokens, fmtChars } from "../lib/format";
 import { TAG_INFO } from "../lib/timeline";
 import { CodeView, CopyButton } from "./JsonView";
+import { MiddleTruncate } from "./MiddleTruncate";
 
 const ICONS: Record<FlowItem["kind"], LucideIcon> = {
   system: FileText,
@@ -27,22 +31,13 @@ const ICONS: Record<FlowItem["kind"], LucideIcon> = {
   tool: Wrench,
   output: Terminal,
   failed: TriangleAlert,
+  cancelled: Ban,
   stop: Square,
   request: ArrowLeftRight,
 };
 
-export const KIND_LABEL: Record<FlowItem["kind"], string> = {
-  system: "System prompt",
-  tools: "Tool definitions",
-  user: "User prompt",
-  assistant: "Assistant message",
-  thinking: "Reasoning",
-  tool: "Tool call",
-  output: "Tool output without a matching call",
-  failed: "Failed request",
-  stop: "Response stopped early",
-  request: "Request without conversation steps",
-};
+/** Tokens first; the exact character count is the detail behind the estimate. */
+const sizeText = (chars: number) => `${fmtApproxTokens(chars)} · ${fmtChars(chars)}`;
 
 const isError = (item: FlowItem) =>
   item.status === "error" || item.kind === "failed" || item.kind === "stop";
@@ -50,6 +45,7 @@ const isCode = (item: FlowItem) => item.kind === "tool" || item.kind === "reques
 
 function tone(item: FlowItem) {
   if (isError(item)) return "error";
+  if (item.kind === "cancelled") return "warn";
   if (item.kind === "user") return item.injected ? "quiet" : "user";
   if (item.kind === "assistant") return "assistant";
   if (item.kind === "tool" || item.kind === "output") return "tool";
@@ -104,7 +100,7 @@ export const ItemRow = memo(function ItemRow({
   const result = outcomeText != null ? { text: outcomeText, tone: "quiet" as const } : outcome(item);
   const quiet = item.kind !== "user" && item.kind !== "assistant";
   const tags = item.tags.map((tag) => TAG_INFO[tag]?.headline ?? tag);
-  const size = result.size != null ? `${result.size.toLocaleString()} chars` : "";
+  const size = result.size != null ? fmtApproxTokens(result.size) : "";
   return (
     <button
       type="button"
@@ -118,7 +114,12 @@ export const ItemRow = memo(function ItemRow({
     >
       <Tile item={item} />
       <span className={`flow-name ${isCode(item) ? "mono" : ""}`}>
-        <Highlight text={item.name} query={query} />
+        {/* A tool's name keeps both ends; while searching, the match is what matters. */}
+        {isCode(item) && !query ? (
+          <MiddleTruncate text={item.name} />
+        ) : (
+          <Highlight text={item.name} query={query} />
+        )}
       </span>
       <span className="flow-what">
         {item.tags.map((tag) => (
@@ -132,24 +133,29 @@ export const ItemRow = memo(function ItemRow({
           <Highlight text={item.summary} query={query} />
         </span>
       </span>
-      <span className={`flow-outcome flow-outcome-${result.tone}`}>
+      <span
+        className={`flow-outcome flow-outcome-${result.tone}`}
+        title={result.size != null ? `${fmtChars(result.size)}, about four per token` : undefined}
+      >
         {result.text}
-        {result.size != null && (
-          <>
-            {result.size.toLocaleString()}
-            <span className="flow-unit"> chars</span>
-          </>
-        )}
+        {size}
       </span>
     </button>
   );
 });
 
-export const KEY_HINT = (
-  <>
-    <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>e</kbd> next error · <kbd>/</kbd> find
-  </>
-);
+/** A filter for one speaker or one outcome carries that role's colour, as its rows do. */
+const CHIP_ROLE: Record<string, string | undefined> = {
+  prompt: "user",
+  assistant: "assistant",
+  tool: "tool",
+  called: "tool",
+  harness: "harness",
+  error: "failed",
+  failed: "failed",
+  toolError: "failed",
+  cancelled: "cancelled",
+};
 
 /** Filter chips with counts plus a text search, shared by every list in the inspector. */
 export function FilterBar<T extends string = FlowFilter>({
@@ -160,7 +166,6 @@ export function FilterBar<T extends string = FlowFilter>({
   onSearch,
   searchLabel,
   searchRef,
-  hint,
   actions,
 }: {
   filters: { value: T; label: string; count: number }[];
@@ -170,7 +175,6 @@ export function FilterBar<T extends string = FlowFilter>({
   onSearch: (value: string) => void;
   searchLabel: string;
   searchRef?: Ref<HTMLInputElement>;
-  hint?: ReactNode;
   /** Controls specific to one view, e.g. a sort order. */
   actions?: ReactNode;
 }) {
@@ -183,6 +187,7 @@ export function FilterBar<T extends string = FlowFilter>({
               type="button"
               key={value}
               className="flow-chip"
+              data-role={CHIP_ROLE[value]}
               aria-pressed={filter === value}
               onClick={() => onFilter(value)}
             >
@@ -192,7 +197,6 @@ export function FilterBar<T extends string = FlowFilter>({
         )}
       </div>
       <div className="flow-tools">
-        {hint && <span className="flow-keys">{hint}</span>}
         {actions}
         <label className="flow-search">
           <Search size={13} aria-hidden="true" />
@@ -238,18 +242,35 @@ function Block({
   );
 }
 
+/**
+ * Shown only when the window is too narrow for the list and the pane side by
+ * side: there the pane opens over the list, and this goes back to it.
+ */
+export function PaneClose({ onClose }: { onClose?: () => void }) {
+  if (!onClose) return null;
+  return (
+    <button type="button" className="flow-pane-close button button-ghost button-sm" onClick={onClose}>
+      <ArrowLeft size={13} aria-hidden="true" />
+      Back to the list
+    </button>
+  );
+}
+
 /** The right-hand pane: full content of the one selected item. */
 export function ItemPreview({
   item,
   where,
   facts,
   actions,
+  onClose,
 }: {
   item: FlowItem | undefined;
   where?: string;
   /** Short facts about the request the item belongs to: model, time, latency. */
   facts?: string[];
   actions?: ReactNode;
+  /** Closes the pane where it covers the list instead of sitting beside it. */
+  onClose?: () => void;
 }) {
   if (!item)
     return (
@@ -267,24 +288,22 @@ export function ItemPreview({
         : item.status === "missing"
           ? "no output captured"
           : item.status;
-  const kind = item.injected ? "User-role message written by the harness" : KIND_LABEL[item.kind];
+  const heading = previewHeading(item);
   // Failure rows carry a synthetic id for de-duplication; only real calls show one.
   const callId = tool || item.kind === "output" ? item.callId : undefined;
   return (
     <aside className="flow-pane" aria-label="Preview" data-item={item.id}>
+      <PaneClose onClose={onClose} />
       <header className="flow-pane-header">
         <Tile item={item} large />
         <div className="flow-pane-title">
-          <span>
-            {kind}
-            {item.tags.length ? ` · ${item.tags.map((tag) => TAG_INFO[tag]?.headline ?? tag).join(" · ")}` : ""}
-          </span>
-          <h3 className={tool ? "mono" : ""}>{item.name}</h3>
+          {heading.eyebrow && <span>{heading.eyebrow}</span>}
+          <h3 className={isCode(item) ? "mono" : ""}>{heading.title}</h3>
           {tool && !noInput && <p className="mono">{item.summary}</p>}
         </div>
         {tool && (
           <span
-            className={`badge ${item.status === "error" ? "badge-error" : item.status === "ok" ? "badge-success" : "badge-muted"}`}
+            className={`badge ${item.status === "error" ? "badge-error" : "badge-muted"}`}
           >
             {status}
           </span>
@@ -311,6 +330,7 @@ export function ItemPreview({
             {item.description.trim().split("\n")[0]}
           </p>
         )}
+        {item.kind === "cancelled" && <p className="flow-pane-note">{item.summary}.</p>}
         {item.kind === "tools" ? (
           <ul className="flow-definitions">
             {(item.tools ?? []).map((definition, index) => (
@@ -329,7 +349,7 @@ export function ItemPreview({
             )}
             {item.output != null ? (
               <Block
-                title={`Output · ${item.status === "error" ? "failed · " : ""}${item.output.length.toLocaleString()} chars`}
+                title={`Output · ${item.status === "error" ? "failed · " : ""}${sizeText(item.output.length)}`}
                 copyLabel={`Copy output of ${item.name}`}
                 text={item.output || "(empty)"}
                 error={item.status === "error"}
@@ -346,14 +366,18 @@ export function ItemPreview({
           <>
             <Block title="What the user typed" copyLabel="Copy what the user typed" text={item.human} />
             <Block
-              title={`Full message as sent · ${item.text.length.toLocaleString()} chars`}
+              title={`Full message as sent · ${sizeText(item.text.length)}`}
               copyLabel="Copy full message"
               text={item.text}
             />
           </>
         ) : (
           <Block
-            title={`${item.kind === "failed" ? "Error" : item.kind === "output" ? "Output" : "Content"} · ${item.text.length.toLocaleString()} chars`}
+            title={
+              item.kind === "cancelled"
+                ? "Recorded by the proxy as"
+                : `${item.kind === "failed" ? "Error" : item.kind === "output" ? "Output" : "Content"} · ${sizeText(item.text.length)}`
+            }
             copyLabel={`Copy ${item.name}`}
             text={item.text || "(empty)"}
             error={isError(item)}

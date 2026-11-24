@@ -6,7 +6,7 @@
 <title>ccglass — See exactly what your coding agent sends to the model</title>
 <meta name="description" content="A lightweight local logging reverse-proxy + web dashboard for Claude Code, Codex, DeepSeek-TUI, Reasonix, Kimi, OpenCode, and more.">
 <meta property="og:title" content="ccglass — Agent traffic inspector">
-<meta property="og:description" content="See the full system prompt, tool schemas, message history, token/cache/cost in real time. One command: ccglass claude, ccglass codex.">
+<meta property="og:description" content="See the full system prompt, tool schemas, message history, token counts, and cache usage in real time.">
 <meta property="og:url" content="https://ccglass.jianshuo.dev">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -289,97 +289,6 @@
 
   .badge.green { border-color: rgba(22,163,74,0.25); background: rgba(22,163,74,0.06); color: var(--green); }
   .badge.blue { border-color: rgba(29,78,216,0.2); background: rgba(29,78,216,0.05); color: var(--blue); }
-
-  /* ── DEMO IMAGE ── */
-  .demo-section {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 2rem 80px;
-    opacity: 0;
-    animation: fade-up 0.7s ease forwards;
-    animation-delay: 0.7s;
-  }
-
-  .demo-frame {
-    position: relative;
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-    box-shadow:
-      0 4px 6px rgba(0,0,0,0.03),
-      0 12px 32px rgba(0,0,0,0.07),
-      0 40px 80px rgba(0,0,0,0.06);
-  }
-
-  .demo-titlebar {
-    background: #e8e8e4;
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .demo-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-  }
-
-  .demo-dot-red { background: #ff5f57; }
-  .demo-dot-yellow { background: #febc2e; }
-  .demo-dot-green { background: #28c840; }
-
-  .demo-url {
-    flex: 1;
-    margin: 0 12px;
-    background: var(--paper-2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 10px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--ink-3);
-    text-align: center;
-  }
-
-  .demo-img {
-    width: 100%;
-    display: block;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    background: #0a0a0a;
-  }
-
-  .demo-img-fallback {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0f0f0f 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .demo-console {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: #d4d4d4;
-    line-height: 1.7;
-    z-index: 2;
-    position: relative;
-    padding: 32px 40px;
-    width: 100%;
-  }
-
-  .console-comment { color: #6a9955; }
-  .console-cmd { color: #9cdcfe; }
-  .console-output { color: #d4d4d4; }
-  .console-url { color: #4ec9b0; text-decoration: underline; }
-  .console-accent { color: var(--accent-2); }
-  .console-dim { color: #6e6e6e; }
-  .console-prompt { color: #7dd3fc; }
 
   /* ── SECTIONS ── */
   section {
@@ -976,51 +885,13 @@
   </div>
 
   <div class="hero-badges">
-    <span class="badge green">Node ≥ 18</span>
+    <span class="badge green">Node ≥ 26</span>
     <span class="badge green">No runtime deps for core</span>
     <span class="badge blue">No CA certs needed</span>
     <span class="badge">MIT license</span>
     <span class="badge">Light &amp; dark theme</span>
   </div>
 </section>
-
-<!-- DEMO FRAME -->
-<div class="demo-section">
-  <div class="demo-frame">
-    <div class="demo-titlebar">
-      <div class="demo-dot demo-dot-red"></div>
-      <div class="demo-dot demo-dot-yellow"></div>
-      <div class="demo-dot demo-dot-green"></div>
-      <div class="demo-url">http://127.0.0.1:57633</div>
-    </div>
-    <img
-      src="demo.gif"
-      alt="ccglass dashboard — live request capture, token/cache/cost, message history with tool calls, the agent-loop flow view, and a turn-to-turn diff"
-      class="demo-img"
-      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-    >
-    <div class="demo-img-fallback" style="display:none">
-      <div class="demo-console">
-<span class="console-dim"># Terminal 1</span>
-<span class="console-prompt">$</span> <span class="console-cmd">ccglass claude</span>
-
-  <span class="console-accent">●</span> ccglass watching <span class="console-cmd">Claude Code</span> → https://api.anthropic.com
-    dashboard: <span class="console-url">http://127.0.0.1:57633</span>
-
-<span class="console-dim">  ┌─ Request #1 ────────────────────────────────────────────</span>
-<span class="console-dim">  │</span> POST /v1/messages  <span class="console-accent">claude-sonnet-4-5</span>  3 tools  128k ctx
-<span class="console-dim">  │</span> input: 12,482 tokens  cache_read: 11,890 (95%)  cost: $0.0041
-<span class="console-dim">  │</span> output: 234 tokens  latency: 1.8s  TTFT: 312ms
-<span class="console-dim">  └──────────────────────────────────────────────────────────</span>
-
-<span class="console-dim">  ┌─ Request #2 ────────────────────────────────────────────</span>
-<span class="console-dim">  │</span> POST /v1/messages  <span class="console-accent">claude-sonnet-4-5</span>  3 tools  diff: +2 msgs
-<span class="console-dim">  │</span> input: 13,104 tokens  cache_read: 12,480 (95%)  cost: $0.0044
-<span class="console-dim">  └──────────────────────────────────────────────────────────</span>
-      </div>
-    </div>
-  </div>
-</div>
 
 <hr class="section-rule">
 
@@ -1072,8 +943,8 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:<span class="v">PORT</span> \
       <h2 class="section-title">Everything in the request,<br><em>laid bare</em></h2>
     </div>
     <p class="section-body" style="font-size:15px">
-      Full system prompts. Every tool schema. Message history. Token, cache, and cost
-      numbers. Turn-to-turn diffs. All of it, in real time.
+      Inspect system prompts, tool schemas, message history, token counts,
+      cache usage, and turn-to-turn diffs in real time.
     </p>
   </div>
 
@@ -1081,12 +952,12 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:<span class="v">PORT</span> \
     <div class="feature-card">
       <div class="feature-icon">⚡</div>
       <div class="feature-title">Live request stream</div>
-      <div class="feature-desc">Every call appears instantly. Click to expand the system prompt, messages, and tools. Long blocks fold behind a toggle. Timestamp and tool-call count on each row.</div>
+      <div class="feature-desc">Open any captured request to inspect its system prompt, messages, tools, response, headers, and raw bodies.</div>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🗺</div>
-      <div class="feature-title">Conversation flow diagram</div>
-      <div class="feature-desc">Top-to-bottom sequence diagram of the agent loop. Tool use and tool result paired by call_id and color-coded. Skill calls flagged.</div>
+      <div class="feature-title">Session replay</div>
+      <div class="feature-desc">Follow user prompts, tool calls with their results, and agent replies on one timeline.</div>
     </div>
     <div class="feature-card">
       <div class="feature-icon">⇄</div>
@@ -1094,9 +965,9 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:<span class="v">PORT</span> \
       <div class="feature-desc">Pick two requests, see exactly what context was added this turn and which blocks carry a cache breakpoint. Understand prompt inflation at a glance.</div>
     </div>
     <div class="feature-card">
-      <div class="feature-icon">💰</div>
-      <div class="feature-title">Token / cache / cost</div>
-      <div class="feature-desc">Exact input, output, and cache tokens from the response usage object. Cache-hit rate percentage. Estimated USD per request with per-provider pricing.</div>
+      <div class="feature-icon">#</div>
+      <div class="feature-title">Tokens and cache</div>
+      <div class="feature-desc">See input, output, and cache token counts from the response, along with the cache-hit rate.</div>
     </div>
     <div class="feature-card">
       <div class="feature-icon">📤</div>
@@ -1116,7 +987,7 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:<span class="v">PORT</span> \
     <div class="feature-card">
       <div class="feature-icon">📊</div>
       <div class="feature-title">Session summary</div>
-      <div class="feature-desc">Rolled-up input and output tokens, cache-hit percentage, and estimated cost across the full session. Filter per-model from the session picker.</div>
+      <div class="feature-desc">See total input and output tokens and the cache-hit rate for the selected session. Filter by model to narrow the totals.</div>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🌓</div>
@@ -1165,7 +1036,7 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:<span class="v">PORT</span> \
           <h3>Dashboard opens automatically</h3>
           <p>
             The local dashboard opens in your browser. Every API request the agent makes
-            appears in real time — system prompt, tools, messages, tokens, cost.
+            appears in real time with its system prompt, tools, messages, and token counts.
           </p>
         </div>
       </div>

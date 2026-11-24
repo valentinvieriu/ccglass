@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RequestDetail from "../src/components/RequestDetail";
 import { ContentBlock } from "../src/components/JsonView";
-import SummaryView from "../src/components/SummaryView";
 import DiffView from "../src/components/DiffView";
 import { api } from "../src/api";
-import type { DiffResult, RequestRecord, UsageSummary } from "../src/types";
+import { fmtApproxTokens } from "../src/lib/format";
+import type { DiffResult, RequestRecord } from "../src/types";
 
 vi.mock("../src/api", () => ({ api: vi.fn() }));
 
@@ -52,35 +52,6 @@ const record: RequestRecord = {
     },
   },
 };
-const bucket = {
-  requests: 1,
-  input: 5,
-  output: 3,
-  cacheRead: 2,
-  cacheWrite: 0,
-  totalInput: 7,
-  usd: 0.001,
-  cacheHitRate: 2 / 7,
-};
-const usage: UsageSummary = {
-  sessionCount: 2,
-  requestCount: 2,
-  unmeasured: 1,
-  range: { from: null, to: null },
-  totals: bucket,
-  byModel: [{ ...bucket, model: "test-model" }],
-  bySession: [
-    { ...bucket, session: "recording", entries: 2 },
-    { ...bucket, session: "saved", name: "Capture title", entries: 1 },
-  ],
-};
-const actions = () => ({
-  onOpenSession: vi.fn(),
-  onExportSession: vi.fn(),
-  onResetSession: vi.fn(),
-  onDeleteSession: vi.fn(),
-});
-
 beforeEach(() => {
   vi.mocked(api).mockReset();
   vi.unstubAllGlobals();
@@ -133,13 +104,35 @@ describe("request inspector", () => {
         }}
       />,
     );
-    const cache = within(screen.getByText("Cache read").parentElement!);
-    expect(cache.getByText("200")).toBeInTheDocument();
-    expect(cache.getByText("65% hit rate")).toBeInTheDocument();
+    // A request opens on what was sent; the full breakdown is folded behind the facts line.
+    expect(screen.getByRole("tab", { name: "overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "New since the last reply" })).toBeInTheDocument();
+    expect(screen.queryByText("Input (total)")).not.toBeInTheDocument();
+    const details = screen.getByRole("button", { name: "Details" });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(details);
+    // One vocabulary: input is everything sent, and the cached part is named as part of it.
+    expect(
+      within(screen.getByText("Input (total)").closest("div")!).getByText("310 tokens"),
+    ).toBeInTheDocument();
+    const cache = within(screen.getByText("of which cached").closest("div")!);
+    expect(cache.getByText("200 tokens")).toBeInTheDocument();
+    expect(cache.getByText("65% of the input")).toBeInTheDocument();
+    expect(screen.queryByText("Actual input")).not.toBeInTheDocument();
+    const outcome = within(screen.getByLabelText("Request outcome"));
+    for (const fact of [
+      "HTTP 200",
+      "1.25s, first token 50ms",
+      "310 tokens in (65% cached)",
+      "20 tokens out",
+    ])
+      expect(outcome.getByText(fact)).toBeInTheDocument();
     expect(screen.getByText("$0.25000")).toBeInTheDocument();
-    expect(screen.getByText("310")).toBeInTheDocument();
     for (const metric of ["1.25s", "50ms", "1.20s", "30.0 tok/s", "20.0 tok/s"])
       expect(screen.getByText(metric)).toBeInTheDocument();
+    // It stays open on the other tabs.
+    fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
+    expect(screen.getByText("of which cached")).toBeInTheDocument();
   });
 
   it("shows normalized token counts without fabricating costs when billing is unavailable", () => {
@@ -154,12 +147,12 @@ describe("request inspector", () => {
       },
     };
     const { rerender } = render(<RequestDetail record={{ id: "usage-only", parsed }} />);
-    expect(
-      within(screen.getByText("Actual input").parentElement!).getByText("7"),
-    ).toBeInTheDocument();
-    expect(within(screen.getByText("Output").parentElement!).getByText("9")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const row = (label: string) => within(screen.getByText(label).closest("div")!);
+    expect(row("Input (total)").getByText("7 tokens")).toBeInTheDocument();
+    expect(row("Output").getByText("9 tokens")).toBeInTheDocument();
     expect(screen.queryByText("Estimated cost")).not.toBeInTheDocument();
-    expect(screen.getByText("0% hit rate")).toBeInTheDocument();
+    expect(screen.getByText("0% of the input")).toBeInTheDocument();
     rerender(
       <RequestDetail
         record={{
@@ -178,10 +171,8 @@ describe("request inspector", () => {
         }}
       />,
     );
-    expect(
-      within(screen.getByText("Actual input").parentElement!).getByText("12"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("40% hit rate")).toBeInTheDocument();
+    expect(row("Input (total)").getByText("20 tokens")).toBeInTheDocument();
+    expect(screen.getByText("40% of the input")).toBeInTheDocument();
     expect(screen.getByText("$0.00000")).toBeInTheDocument();
   });
 
@@ -257,7 +248,7 @@ describe("request inspector", () => {
       .join("\n");
     expect(responseJson).toContain('"command": "ls"');
     expect(responseJson).toContain('"payload": "opaque value"');
-    fireEvent.click(screen.getByRole("tab", { name: "flow" }));
+    fireEvent.click(screen.getByRole("tab", { name: "overview" }));
     const response = screen.getByRole("region", { name: "Response" });
     expect(within(response).getByText(/stop: tool_use/)).toBeInTheDocument();
     expect(screen.getByText("New thought", { selector: "pre" })).toBeInTheDocument();
@@ -265,8 +256,31 @@ describe("request inspector", () => {
     expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent('"payload": "opaque value"');
   });
 
+  it("opens a single system prompt in full, and folds long blocks when there are several", () => {
+    const long = Array.from({ length: 40 }, (_, line) => `Rule ${line}`).join("\n");
+    const withSystem = (system: { label: string; text: string }[]): RequestRecord => ({
+      ...record,
+      parsed: { ...record.parsed, view: { ...record.parsed!.view!, system } },
+    });
+    const { rerender } = render(
+      <RequestDetail record={withSystem([{ label: "system[0]", text: long }])} activeTab="system" />,
+    );
+    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/Rule 39/)).toBeInTheDocument();
+    rerender(
+      <RequestDetail
+        record={withSystem([
+          { label: "system[0]", text: long },
+          { label: "system[1]", text: long },
+        ])}
+        activeTab="system"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("keeps what was sent apart from what came back and mounts only the selected item in full", () => {
-    const { container } = render(<RequestDetail record={record} activeTab="flow" />);
+    const { container } = render(<RequestDetail record={record} activeTab="overview" />);
     const response = screen.getByRole("region", { name: "Response" });
     expect(within(response).getByRole("button", { name: /^Assistant · ok/ })).toHaveAttribute(
       "aria-pressed",
@@ -303,7 +317,7 @@ describe("request inspector", () => {
     };
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
-    const { rerender } = render(<RequestDetail record={captured} activeTab="flow" />);
+    const { rerender } = render(<RequestDetail record={captured} activeTab="overview" />);
     const requested = screen.getByRole("button", { name: /^raise_point/ });
     expect(requested).toHaveAttribute("aria-pressed", "true");
     expect(requested).toHaveTextContent("section: evidence.saw · text: Question the wait time");
@@ -311,7 +325,7 @@ describe("request inspector", () => {
     const rows = screen.getAllByRole("button", { name: /^read_item/ });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent("id: evidence-2");
-    expect(rows[0]).toHaveTextContent(`ok · ${output.length.toLocaleString()} chars`);
+    expect(rows[0]).toHaveTextContent(`ok · ${fmtApproxTokens(output.length)}`);
     expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
     fireEvent.click(rows[0]);
     const preview = screen.getByRole("complementary", { name: "Preview" });
@@ -322,12 +336,12 @@ describe("request inspector", () => {
     expect(blocks[1]).toHaveTextContent("complete output");
     fireEvent.click(screen.getByRole("button", { name: "Copy output of read_item" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(output));
-    rerender(<RequestDetail record={{ ...captured }} activeTab="flow" />);
+    rerender(<RequestDetail record={{ ...captured }} activeTab="overview" />);
     expect(screen.getByRole("button", { name: /^read_item/ })).toHaveAttribute("aria-pressed", "true");
     fireEvent.keyDown(screen.getByRole("button", { name: /^read_item/ }), { key: "ArrowDown" });
     expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveFocus();
-    rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="flow" />);
+    rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="overview" />);
     expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
   });
 
@@ -352,7 +366,7 @@ describe("request inspector", () => {
         response: { content: [{ type: "text", text: "On it." }], stop_reason: "end_turn" },
       },
     };
-    render(<RequestDetail record={captured} activeTab="flow" />);
+    render(<RequestDetail record={captured} activeTab="overview" />);
     expect(screen.getByText(/~1,000/)).toBeInTheDocument();
     const fresh = screen.getByRole("region", { name: "New since the last reply" });
     expect(within(fresh).getAllByRole("button")).toHaveLength(2);
@@ -386,11 +400,11 @@ describe("request inspector", () => {
       parsed: { view: { system: [], tools: [], messages: [{ type: "tool_use", name: "shell", callId: "earlier", text: '{"command":"pwd"}' }] } },
       response: null,
     };
-    const { rerender } = render(<RequestDetail record={pending} activeTab="flow" />);
+    const { rerender } = render(<RequestDetail record={pending} activeTab="overview" />);
     expect(screen.getByRole("button", { name: /^shell/ })).toHaveTextContent("no output captured");
     expect(screen.getByText("Waiting for the model response…")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Errors/ })).not.toBeInTheDocument();
-    rerender(<RequestDetail record={{ ...pending, id: "failed", response: { status: 502, error: "upstream disconnected" } }} activeTab="flow" />);
+    rerender(<RequestDetail record={{ ...pending, id: "failed", response: { status: 502, error: "upstream disconnected" } }} activeTab="overview" />);
     const response = screen.getByRole("region", { name: "Response" });
     const failure = within(response).getByRole("button", { name: /^Request failed/ });
     expect(failure).toHaveTextContent("error 502: upstream disconnected");
@@ -560,47 +574,6 @@ describe("inspector content folding", () => {
     await waitFor(() => expect(container.querySelector("pre.code-block")?.textContent).toBe(text));
     fireEvent.click(screen.getByRole("button", { name: "Long response" }));
     await waitFor(() => expect(container.querySelector("pre.code-block")).toBeNull());
-    vi.unstubAllGlobals();
-  });
-});
-
-describe("session summary", () => {
-  it("keeps saved-session inspection and export available in read-only mode while hiding mutations", async () => {
-    vi.mocked(api).mockResolvedValue(usage);
-    const callbacks = actions();
-    render(<SummaryView usage={usage} controllable={false} live={null} {...callbacks} />);
-    fireEvent.click(screen.getByRole("tab", { name: "By session" }));
-    await waitFor(() => expect(api).toHaveBeenCalledWith("/api/usage?names=1", expect.anything()));
-    expect(screen.getByText("Capture title")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reset session saved" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete session saved" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Export session saved" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open session saved" }));
-    expect(callbacks.onExportSession).toHaveBeenCalledWith("saved");
-    expect(callbacks.onOpenSession).toHaveBeenCalledWith("saved");
-  });
-
-  it("blocks deletion of recording sessions and delegates saved-session deletion and reset", () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-    const callbacks = actions();
-    // Names are switched off, so the session table must not trigger the lookup.
-    vi.stubGlobal("localStorage", { getItem: () => "0", setItem: () => {} });
-    render(<SummaryView usage={usage} controllable live="recording" {...callbacks} />);
-    fireEvent.click(screen.getByRole("tab", { name: "By session" }));
-    expect(screen.getByRole("button", { name: "Delete session recording" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Delete session saved" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Delete session saved" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset session saved" }));
-    expect(callbacks.onDeleteSession).toHaveBeenCalledWith("saved");
-    expect(callbacks.onResetSession).toHaveBeenCalledWith("saved");
-    expect(confirm).toHaveBeenCalledTimes(2);
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("Permanently delete session saved"),
-    );
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("Clear all requests in session saved"),
-    );
-    expect(api).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

@@ -10,6 +10,7 @@ import {
 import { ChevronRight, FileText, Wrench } from "lucide-react";
 import type { RequestRecord } from "../types";
 import { approxTokens, keyTarget, outcome, type FlowItem } from "../lib/flow";
+import { fmtApproxTokens, fmtChars, plural } from "../lib/format";
 import {
   buildTools,
   matchesTool,
@@ -20,7 +21,8 @@ import {
   type ToolSort,
 } from "../lib/tools";
 import { TAG_INFO } from "../lib/timeline";
-import { FilterBar, Highlight } from "./FlowItems";
+import { FilterBar, Highlight, PaneClose } from "./FlowItems";
+import { MiddleTruncate } from "./MiddleTruncate";
 import { CodeView, CopyButton } from "./JsonView";
 
 const SORTS: [ToolSort, string][] = [
@@ -32,10 +34,12 @@ const SORTS: [ToolSort, string][] = [
 
 const VALUE_LIMIT = 24;
 
-const plural = (count: number, word: string) =>
-  `${count.toLocaleString()} ${word}${count === 1 ? "" : "s"}`;
 const share = (value: number) => (value < 0.005 ? "<1%" : `${Math.round(value * 100)}%`);
 const literal = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
+
+/** A definition's share of the measured input when there is one, else an estimate from its length. */
+const toolSize = (tool: ToolEntry) =>
+  tool.tokens != null ? `~${approxTokens(tool.tokens)} tok` : fmtApproxTokens(tool.chars);
 
 function callsText(tool: ToolEntry) {
   if (!tool.calls.length) return "";
@@ -68,7 +72,7 @@ function ToolRow({
         tool.name,
         tool.summary || "No description",
         calls || "not called",
-        `${tool.chars.toLocaleString()} chars`,
+        toolSize(tool),
       ].join(" · ")}
       data-item={tool.id}
       onClick={() => onSelect(tool.id)}
@@ -77,7 +81,7 @@ function ToolRow({
         <Wrench size={13} aria-hidden="true" />
       </span>
       <span className="flow-name mono">
-        <Highlight text={tool.name} query={query} />
+        {query ? <Highlight text={tool.name} query={query} /> : <MiddleTruncate text={tool.name} />}
       </span>
       <span className="flow-what">
         <span className="flow-summary flow-quiet">
@@ -85,12 +89,11 @@ function ToolRow({
         </span>
       </span>
       <span className={`tool-calls ${tool.failed ? "flow-outcome-error" : ""}`}>{calls}</span>
-      <span className="tool-size">
+      <span className="tool-size" title={fmtChars(tool.chars)}>
         <i aria-hidden="true">
           <b style={{ width: `${Math.max(4, (tool.chars / largest) * 100)}%` }} />
         </i>
-        {tool.chars.toLocaleString()}
-        <span className="flow-unit"> chars</span>
+        {toolSize(tool)}
       </span>
     </button>
   );
@@ -128,10 +131,12 @@ function ToolPane({
   tool,
   total,
   onOpenCall,
+  onClose,
 }: {
   tool: ToolEntry | undefined;
   total: number;
   onOpenCall?: (item: FlowItem) => void;
+  onClose?: () => void;
 }) {
   const [raw, setRaw] = useState(false);
   useEffect(() => setRaw(false), [tool?.id]);
@@ -147,6 +152,7 @@ function ToolPane({
   const category = tool.category ? TAG_INFO[tool.category]?.headline : undefined;
   return (
     <aside className="flow-pane" aria-label="Tool definition" data-item={tool.id}>
+      <PaneClose onClose={onClose} />
       <header className="flow-pane-header">
         <span className="flow-tile flow-tile-tool flow-tile-lg">
           <Wrench size={16} aria-hidden="true" />
@@ -156,7 +162,7 @@ function ToolPane({
           <h3 className="mono">{tool.name}</h3>
         </div>
         <span
-          className={`badge ${tool.failed ? "badge-error" : tool.calls.length ? "badge-success" : "badge-muted"}`}
+          className={`badge ${tool.failed ? "badge-error" : "badge-muted"}`}
         >
           {tool.calls.length
             ? `called ${tool.calls.length}×${tool.failed ? ` · ${tool.failed} failed` : ""}`
@@ -168,9 +174,7 @@ function ToolPane({
           Tool {tool.index + 1} of {total} · sent with every request of this conversation.
         </span>
         <span>
-          {tool.chars.toLocaleString()} chars
-          {tool.tokens != null && ` · ~${approxTokens(tool.tokens)} tok`} · {share(tool.share)} of all
-          definitions
+          {toolSize(tool)} · {fmtChars(tool.chars)} · {share(tool.share)} of all definitions
         </span>
       </div>
       <div className="flow-pane-body">
@@ -311,6 +315,7 @@ export default function ToolsView({
   const [filter, setFilter] = useState<ToolFilter>("all");
   const [sort, setSort] = useState<ToolSort>("sent");
   const [search, setSearch] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [picked, setPicked] = useState<string | undefined>(
     () => model.tools.find((tool) => tool.name === focus?.target)?.id,
   );
@@ -377,8 +382,7 @@ export default function ToolsView({
         <span>
           <strong>{model.tools.length.toLocaleString()}</strong>{" "}
           {model.tools.length === 1 ? "tool" : "tools"} offered ·{" "}
-          {model.chars.toLocaleString()} chars
-          {model.tokens != null && ` · ~${approxTokens(model.tokens)} tok`}
+          {model.tokens != null ? `~${approxTokens(model.tokens)} tok` : fmtApproxTokens(model.chars)}
           {model.inputShare != null && ` · ${share(model.inputShare)} of what was sent`}
         </span>
         <span>
@@ -409,11 +413,6 @@ export default function ToolsView({
         onSearch={setSearch}
         searchLabel="Find a tool or parameter"
         searchRef={searchInput}
-        hint={
-          <>
-            <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>/</kbd> find
-          </>
-        }
         actions={
           <select
             className="filter-select tool-sort"
@@ -430,7 +429,7 @@ export default function ToolsView({
         }
       />
 
-      <div className="flow-split">
+      <div className="flow-split" data-preview={previewOpen ? "open" : "closed"}>
         <div className="flow-list" onKeyDown={onKeyDown} role="group" aria-label="Tools offered">
           {shown.map((tool) => (
             <ToolRow
@@ -440,7 +439,10 @@ export default function ToolsView({
               query={query}
               largest={largest}
               selected={selected?.id === tool.id}
-              onSelect={select}
+              onSelect={(toolId) => {
+                select(toolId);
+                setPreviewOpen(true);
+              }}
             />
           ))}
           {!shown.length && (
@@ -459,7 +461,12 @@ export default function ToolsView({
             </p>
           )}
         </div>
-        <ToolPane tool={selected} total={model.tools.length} onOpenCall={onOpenCall} />
+        <ToolPane
+          tool={selected}
+          total={model.tools.length}
+          onOpenCall={onOpenCall}
+          onClose={() => setPreviewOpen(false)}
+        />
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import type { RequestRecord, TimelineStep, TimelineRow } from "../types";
+import { isCancelError } from "./entries";
 import { oneLine } from "./format";
 export { oneLine } from "./format";
 
@@ -194,7 +195,16 @@ export function flowSteps(
   if (!emittedResponse) {
     const status = rec.response?.status;
     const err = r?.error ?? rec.response?.error ?? rec.error;
-    if (err || (status && status >= 400)) {
+    if (isCancelError(err) && !(status && status >= 400)) {
+      // Not a failure of the API: the client hung up. Kept apart from errors.
+      steps.push({
+        kind: "stop",
+        callId: "resp-error|" + (rec.id ?? rec.seq ?? ""),
+        text: String(err),
+        cancelled: true,
+        latest: true,
+      });
+    } else if (err || (status && status >= 400)) {
       const msg = err?.message || err?.type || (typeof err === "string" ? err : "");
       // callId keys this row per-turn so two turns that fail with the *same*
       // error aren't deduped into one (which would re-hide the second failure).

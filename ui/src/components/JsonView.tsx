@@ -185,7 +185,7 @@ export function ContentBlock({
   return (
     <section className={`detail-card ${className}`} style={style}>
       <div className="detail-card-header flex-wrap">
-        <h3 className="m-0 mr-auto font-semibold">
+        <h3 className="m-0 mr-auto font-strong">
           {long ? (
             <button
               className="content-title"

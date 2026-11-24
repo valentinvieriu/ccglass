@@ -33,7 +33,6 @@ function props(overrides: Partial<TimelineViewProps> = {}): TimelineViewProps {
     records: {},
     modelFilter: "all",
     onOpen: vi.fn(),
-    onExport: vi.fn(),
     loading: false,
     isLive: true,
     recordLimit: 500,
@@ -76,7 +75,7 @@ describe("conversation timeline", () => {
     expect(container.querySelector('[data-kind="tool"]')).toBe(toolRow);
     expect(container.querySelectorAll('[data-kind="tool"]')).toHaveLength(1);
     expect(container.querySelector('[data-kind="output"]')).toBeNull();
-    expect(toolRow).toHaveAccessibleName("Bash · printf hello · error · 28 chars");
+    expect(toolRow).toHaveAccessibleName("Bash · printf hello · error · ~7 tok");
     expect(toolRow).toHaveClass("flow-row-error");
     fireEvent.click(toolRow!);
     expect(
@@ -100,7 +99,10 @@ describe("conversation timeline", () => {
       records: { [first.id]: first, [second.id]: second },
       isLive: false,
     })} />);
-    expect(screen.getByText(/1 prompt · 4 events · 2 \/ 2 requests loaded/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prompts 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Everything 4" })).toBeInTheDocument();
+    // Every request is loaded, so there is no progress to report.
+    expect(screen.queryByText(/requests loaded/)).not.toBeInTheDocument();
     expect(container.querySelectorAll(".flow-row")).toHaveLength(4);
     expect(row(/^User · Current user prompt · 2 requests/)).toHaveAttribute("aria-pressed", "true");
     expect(within(preview()).getByText("First sent in request #1.")).toBeInTheDocument();
@@ -111,7 +113,11 @@ describe("conversation timeline", () => {
     fireEvent.click(row(/^Assistant · Reply 2/));
     expect(within(preview()).getByText("Returned in response #2.")).toBeInTheDocument();
     expect(container.querySelectorAll(".replay-open")).toHaveLength(2);
-    expect(screen.getByLabelText("How to read the request strip")).toBeInTheDocument();
+    // The strip has no key of its own: each mark says what it is on hover.
+    expect(screen.getByRole("button", { name: "Go to request 1" }).title).toMatch(
+      /^Request #1 · .* · a prompt starts here$/,
+    );
+    expect(screen.getByRole("button", { name: "Go to request 2" }).title).not.toMatch(/prompt/);
   });
 
   it("keeps unmatched tool outputs as their own row and shows a paired output on its call", () => {
@@ -129,10 +135,10 @@ describe("conversation timeline", () => {
       records: { [first.id]: first, [second.id]: second },
     })} />);
     const orphan = container.querySelector('[data-kind="output"]')!;
-    expect(orphan).toHaveAccessibleName("Tool output · Unmatched output · 16 chars");
+    expect(orphan).toHaveAccessibleName("Tool output · Unmatched output · ~4 tok");
     expect(orphan.closest(".replay-line")).toHaveAttribute("data-entry", "session/2");
     expect(screen.queryByText("Working directory: /project")).not.toBeInTheDocument();
-    fireEvent.click(row(/^Bash · pwd · ok · 27 chars/));
+    fireEvent.click(row(/^Bash · pwd · ok · ~7 tok/));
     expect(within(preview()).getByText("Working directory: /project")).toBeInTheDocument();
   });
 
@@ -160,7 +166,7 @@ describe("conversation timeline", () => {
     expect(container.querySelector("pre")?.textContent).toBe("Short answer");
   });
 
-  it("uses only the provided replay page, filters models, and retains whole-session export and turn inspection", () => {
+  it("uses only the provided replay page, filters models, and opens the request of a turn", () => {
     const records = [record(1), record(2, "other"), record(3)];
     records[2].parsed!.cost = { usd: 0.0123 };
     const initial = props({
@@ -171,17 +177,56 @@ describe("conversation timeline", () => {
       isLive: false,
     });
     render(<TimelineView {...initial} />);
-    expect(screen.getByRole("region", { name: "Session replay" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Inspect turn 1" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Inspect turn 2" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Replay" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open request 1" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open request 2" })).not.toBeInTheDocument();
     expect(screen.getByText(/Session exports include every request/)).toBeInTheDocument();
     expect(within(preview()).getByText(/Request #3 · claude · .* · HTTP 200 · \$0\.0123/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Inspect turn 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open request 3" }));
     fireEvent.click(screen.getByRole("button", { name: /Open request #3/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Export session" }));
     expect(initial.onOpen).toHaveBeenCalledTimes(2);
     expect(initial.onOpen).toHaveBeenLastCalledWith("session/3");
-    expect(initial.onExport).toHaveBeenCalledOnce();
+    // One model in the session: there is nothing to choose between.
+    expect(screen.queryByRole("combobox", { name: "Show requests to one model" })).toBeNull();
+  });
+
+  it("opens a request from the whole gutter cell, with Enter and with a double click", () => {
+    const first = record(1);
+    first.latencyMs = 2250;
+    const second = record(2);
+    const view = props({
+      entries: [entry(1), entry(2)],
+      records: { [first.id]: first, [second.id]: second },
+      isLive: false,
+      facts: <p aria-label="Session statistics">2 requests</p>,
+    });
+    render(<TimelineView {...view} />);
+    // The session's totals sit beside the title instead of in a band above it.
+    expect(
+      within(screen.getByRole("heading", { name: "Replay" }).parentElement!).getByLabelText(
+        "Session statistics",
+      ),
+    ).toHaveTextContent("2 requests");
+    // The number and the latency are one target, as wide as the gutter.
+    expect(screen.getByRole("button", { name: "Open request 1" })).toHaveTextContent("#12.25s");
+    const reply = row(/^Assistant · Reply 2/);
+    fireEvent.keyDown(reply, { key: "Enter" });
+    expect(view.onOpen).toHaveBeenLastCalledWith("session/2");
+    fireEvent.doubleClick(row(/^Assistant · Reply 1/));
+    expect(view.onOpen).toHaveBeenLastCalledWith("session/1");
+    expect(view.onOpen).toHaveBeenCalledTimes(2);
+    // Enter on the filter chips is not a request to open anything.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Everything 2" }), { key: "Enter" });
+    expect(view.onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it("says how many requests are loaded only while some are missing", () => {
+    render(
+      <TimelineView
+        {...props({ entries: [entry(1), entry(2)], records: { "session/1": record(1) }, loading: true })}
+      />,
+    );
+    expect(screen.getByText("1 / 2 requests loaded")).toBeInTheDocument();
   });
 
   it("does not truncate entries supplied by the parent based on the informational record limit", () => {
@@ -195,8 +240,8 @@ describe("conversation timeline", () => {
         })}
       />,
     );
-    expect(screen.getByRole("button", { name: "Inspect turn 1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Inspect turn 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open request 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open request 3" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Go to request/ })).toHaveLength(3);
   });
 
@@ -302,12 +347,17 @@ describe("conversation timeline", () => {
     expect(row(/^User · Fix the login test · 2 requests · 1 tool · 2\.00s/)).toHaveAttribute("aria-pressed", "true");
     expect(within(preview()).getByText("What the user typed")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Bash/ })).toHaveLength(1);
-    expect(row(/^Bash · npm test · error · 8 chars/)).toBeInTheDocument();
+    expect(row(/^Bash · npm test · error · ~2 tok/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Go to request 1" }));
     expect(fold).toHaveAttribute("aria-expanded", "true");
     expect(row(/^GET · \/v1\/models · HTTP 404/)).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Prompts 1" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Errors 1" }));
+    // A failed request and a failed tool call are counted and filtered apart:
+    // the first in requests, like the request list, the second in events.
+    fireEvent.click(screen.getByRole("button", { name: "Failed 1" }));
+    expect(document.querySelectorAll(".flow-row")).toHaveLength(1);
+    expect(row(/^GET · \/v1\/models · HTTP 404/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tool errors 1" }));
     expect(document.querySelectorAll(".flow-row")).toHaveLength(1);
     expect(row(/^Bash/)).toHaveAttribute("aria-pressed", "true");
     fireEvent.change(screen.getByLabelText("Find in this session"), { target: { value: "nothing like this" } });
@@ -339,13 +389,93 @@ describe("conversation timeline", () => {
     expect(screen.getByRole("button", { name: "Go to request 1" })).toHaveClass("replay-bar-error");
   });
 
-  it("exports empty saved captures and distinguishes an empty capture from a model mismatch", () => {
-    const initial = props({ isLive: false });
+  it("shows a request the client cancelled in amber, apart from the failures", () => {
+    const cancelled = record(1);
+    cancelled.response = { error: "client disconnected" };
+    cancelled.parsed!.response = { error: "client disconnected" };
+    const failed = record(2);
+    failed.response = { error: "socket hang up" };
+    failed.parsed!.response = { error: "socket hang up" };
+    render(
+      <TimelineView
+        {...props({
+          isLive: false,
+          entries: [
+            { ...entry(1), status: null, error: "client disconnected" },
+            { ...entry(2), status: null, error: "socket hang up" },
+          ],
+          records: { [cancelled.id]: cancelled, [failed.id]: failed },
+        })}
+      />,
+    );
+    const bar = screen.getByRole("button", { name: "Go to request 1" });
+    expect(bar).toHaveClass("replay-bar-cancelled");
+    expect(bar).not.toHaveClass("replay-bar-error");
+    expect(bar.title).toContain("cancelled by the client");
+    expect(screen.getByRole("button", { name: "Go to request 2" })).toHaveClass("replay-bar-error");
+    // One of each, counted in requests.
+    expect(screen.getByRole("button", { name: "Failed 1" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelled 1" }));
+    const line = row(/^Cancelled · The client closed the connection before the response finished · cancelled/);
+    expect(line).not.toHaveClass("flow-row-error");
+    expect(screen.queryByRole("button", { name: /^Request failed/ })).not.toBeInTheDocument();
+    fireEvent.click(line);
+    expect(within(preview()).getByRole("heading", { name: "Request cancelled" })).toBeInTheDocument();
+    expect(within(preview()).getByText("Request #1 was cancelled.")).toBeInTheDocument();
+    expect(within(preview()).getByText("client disconnected")).toBeInTheDocument();
+  });
+
+  it("offers to delete an empty saved capture and tells it apart from a model mismatch", () => {
+    const initial = props({ isLive: false, onDelete: vi.fn() });
     const { rerender } = render(<TimelineView {...initial} />);
-    expect(screen.getByText("This saved capture has no requests.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Export session" }));
-    expect(initial.onExport).toHaveBeenCalledOnce();
-    rerender(<TimelineView {...initial} entries={[entry(1)]} modelFilter="other" />);
+    expect(screen.getByText("This saved session is empty")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete session…" }));
+    expect(initial.onDelete).toHaveBeenCalledOnce();
+    const onModel = vi.fn();
+    rerender(
+      <TimelineView
+        {...initial}
+        entries={[entry(1)]}
+        modelFilter="other"
+        models={["claude", "other"]}
+        onModel={onModel}
+        heading={<nav aria-label="Views of this session">Replay Usage</nav>}
+      />,
+    );
     expect(screen.getByText("No requests for this model")).toBeInTheDocument();
+    // A session that called several models offers the choice where the replay is read.
+    fireEvent.change(screen.getByRole("combobox", { name: "Show requests to one model" }), {
+      target: { value: "claude" },
+    });
+    expect(onModel).toHaveBeenCalledWith("claude");
+    // The session's views take the place of the title.
+    expect(screen.getByRole("navigation", { name: "Views of this session" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Replay" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete session…" })).not.toBeInTheDocument();
+  });
+
+  it("tells a new user what to do while recording is on and nothing has arrived", () => {
+    render(<TimelineView {...props({ isLive: true, onDelete: vi.fn() })} />);
+    expect(screen.getByText("Recording. Nothing has come through yet")).toBeInTheDocument();
+    expect(screen.getByText(/Point your agent's API base URL at the ccglass proxy/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete session…" })).not.toBeInTheDocument();
+  });
+
+  it("offers auto-scroll only while recording, and never starts following a saved session", () => {
+    const first = record(1);
+    const saved = props({ entries: [entry(1)], records: { [first.id]: first }, isLive: false });
+    const { rerender } = render(<TimelineView {...saved} />);
+    expect(screen.queryByRole("checkbox", { name: "Auto-scroll" })).not.toBeInTheDocument();
+    const viewport = screen.getByTestId("timeline-scroll");
+    Object.defineProperties(viewport, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 200 },
+    });
+    // Reading to the end of a saved session is not a request to follow it.
+    viewport.scrollTop = 800;
+    fireEvent.scroll(viewport);
+    viewport.scrollTop = 300;
+    rerender(<TimelineView {...saved} records={{ ...saved.records }} />);
+    expect(viewport.scrollTop).toBe(300);
   });
 });

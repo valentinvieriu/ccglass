@@ -1,6 +1,7 @@
 import type { EntrySummary, RequestRecord, TimelineRow } from "../types";
-import { stepItem, type FlowItem } from "./flow";
-import { fmtCost, fmtMs } from "./format";
+import { isCancelError, isCancelled, isFailed } from "./entries";
+import { isBlankReply, matchesFilter, stepItem, type FlowFilter, type FlowItem } from "./flow";
+import { fmtClock, fmtCost, fmtMs, plural } from "./format";
 
 /** One line of the session replay: an item and the request it first appeared in. */
 export interface ReplayLine {
@@ -33,9 +34,37 @@ const NORMAL_STOP = /^(stop|end_turn|tool_use|tool_calls|stop_sequence|function_
 const isErrorStop = (text: string) => /^error(?:[\s:]|$)/.test(text);
 
 export const entryFailed = (entry: EntrySummary, record?: RequestRecord) =>
-  ((record?.response?.status ?? entry.status) ?? 0) >= 400 ||
-  entry.error != null ||
-  record?.error != null;
+  isFailed(entry) ||
+  (record?.response?.status ?? 0) >= 400 ||
+  (record?.error != null && !isCancelError(record.error));
+
+/** The client hung up before the response finished: not a failure of the API. */
+export const entryCancelled = (entry: EntrySummary, record?: RequestRecord) =>
+  !entryFailed(entry, record) &&
+  (isCancelled(entry) || isCancelError(record?.response?.error ?? record?.error));
+
+/**
+ * Filters of the session replay. A failed request and a failed tool call are
+ * different things: the first is counted in requests, like the request list
+ * counts it, and keeps every line of that request; the second is one line.
+ * Cancelled requests are counted in requests too, apart from the failed ones.
+ */
+export type ReplayFilter =
+  | Exclude<FlowFilter, "error" | "harness">
+  | "failed"
+  | "cancelled"
+  | "toolError";
+export function matchesReplayFilter(
+  filter: ReplayFilter,
+  line: ReplayLine,
+  records: Record<string, RequestRecord>,
+) {
+  if (filter === "failed") return entryFailed(line.entry, records[line.entry.id]);
+  if (filter === "cancelled") return entryCancelled(line.entry, records[line.entry.id]);
+  if (filter === "toolError")
+    return (line.item.kind === "tool" || line.item.kind === "output") && line.item.status === "error";
+  return matchesFilter(filter, line.item);
+}
 
 /** A request that carries no conversation: model listings, health probes. */
 export const isSetup = (entry: EntrySummary) => !entry.model && !entry.nMessages;
@@ -51,7 +80,7 @@ function path(url: string | undefined) {
 
 function rowItem(row: TimelineRow): FlowItem | null {
   if (row.kind === "stop") {
-    if (isErrorStop(row.text)) return stepItem(row, row.key, "response");
+    if (row.cancelled || isErrorStop(row.text)) return stepItem(row, row.key, "response");
     if (NORMAL_STOP.test(row.text.trim())) return null;
     return {
       id: row.key,
@@ -79,6 +108,7 @@ function where(row: TimelineRow, item: FlowItem) {
       : asked;
   }
   if (item.kind === "failed") return `Request ${request} ended with an error.`;
+  if (item.kind === "cancelled") return `Request ${request} was cancelled.`;
   if (row.latest) return `Returned in response ${request}.`;
   if (item.kind === "assistant" || item.kind === "thinking")
     return `First seen as history in request ${request}.`;
@@ -117,8 +147,6 @@ function requestItem(
   };
 }
 
-const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? "" : "s"}`;
-
 /** Facts about one request, for the gutter tooltip and the preview. */
 export function entryFacts(entry: EntrySummary, record?: RequestRecord) {
   const status = record?.response?.status ?? entry.status;
@@ -131,7 +159,7 @@ export function entryFacts(entry: EntrySummary, record?: RequestRecord) {
   return [
     `Request #${entry.seq}`,
     model,
-    entry.ts ? new Date(entry.ts).toLocaleTimeString([], { hour12: false }) : null,
+    entry.ts ? fmtClock(entry.ts) : null,
     latency != null ? fmtMs(latency) : null,
     status != null ? `HTTP ${status}` : null,
     typeof cost === "number" ? fmtCost(cost) : null,
@@ -193,8 +221,9 @@ export function buildReplay(
       continue;
     }
     closeRun();
-    const items = entryRows.flatMap((row) => {
-      const item = rowItem(row);
+    const items = entryRows.flatMap((row, index) => {
+      // An empty text block beside a tool call says nothing on a line of its own.
+      const item = isBlankReply(entryRows, index) ? null : rowItem(row);
       return item ? [{ row, item }] : [];
     });
     if (!items.length) {

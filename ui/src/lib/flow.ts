@@ -1,5 +1,7 @@
 import type { RequestRecord, TimelineStep, ToolDefinition } from "../types";
+import { CANCELLED_NOTE } from "./entries";
 import {
+  TAG_INFO,
   detectPatterns,
   envelopeName,
   flowSteps,
@@ -18,6 +20,8 @@ export type FlowKind =
   | "tool"
   | "output"
   | "failed"
+  /** The client closed the connection before the response finished. */
+  | "cancelled"
   /** A response that stopped for an unusual reason, such as a token limit. */
   | "stop"
   /** A whole request with no conversation steps, such as a model listing. */
@@ -122,6 +126,14 @@ export function stepItem(
       chars: step.text.length,
       status: step.isError ? "error" : "ok",
     };
+  if (step.kind === "stop" && step.cancelled)
+    return {
+      ...base,
+      kind: "cancelled",
+      name: "Cancelled",
+      summary: CANCELLED_NOTE.charAt(0).toUpperCase() + CANCELLED_NOTE.slice(1),
+      chars: step.text.length,
+    };
   if (step.kind === "stop")
     return { ...base, kind: "failed", name: "Request failed", summary: step.text, chars: step.text.length };
   if (step.kind === "system")
@@ -190,6 +202,25 @@ export function newStart(steps: TimelineStep[]) {
   return index;
 }
 
+const isBlank = (step: TimelineStep) =>
+  step.kind === "assistant" && !step.label && !step.text.trim();
+
+/**
+ * A text block with nothing in it, in a reply that also calls a tool or says
+ * something. Some models send one before every tool call; as a row of its own
+ * it reads "Assistant · Empty message" and says nothing. A reply that is empty
+ * altogether is kept: that the model returned nothing is worth a row.
+ */
+export function isBlankReply(steps: TimelineStep[], index: number) {
+  const step = steps[index];
+  if (!step || !isBlank(step)) return false;
+  const sameReply = (other: TimelineStep | undefined) =>
+    !!other && modelSide(other) && !!other.latest === !!step.latest;
+  for (let at = index - 1; sameReply(steps[at]); at--) if (!isBlank(steps[at])) return true;
+  for (let at = index + 1; sameReply(steps[at]); at++) if (!isBlank(steps[at])) return true;
+  return false;
+}
+
 export function buildFlow(record: RequestRecord): FlowModel {
   const view = record.parsed?.view;
   const items: FlowItem[] = [];
@@ -235,6 +266,7 @@ export function buildFlow(record: RequestRecord): FlowModel {
     const zone: FlowZone = index < split ? "carried" : "new";
     // An output is shown on its call's row; only unmatched ones get their own.
     if (step.kind === "tool_result" && step.callId && calls.has(step.callId)) return;
+    if (isBlankReply(sent, index)) return;
     const result = isCall(step) && step.callId ? results.get(step.callId) : undefined;
     const item = stepItem(step, `m-${index}`, zone, result);
     if (item.kind === "tool") {
@@ -251,8 +283,9 @@ export function buildFlow(record: RequestRecord): FlowModel {
     (record.response?.status ?? 0) >= 400;
   let stopReason: string | undefined;
   returned.forEach((step, index) => {
+    if (isBlankReply(returned, index)) return;
     if (step.kind === "stop") {
-      if (requestFailed || /^error(?:[\s:]|$)/.test(step.text))
+      if (step.cancelled || requestFailed || /^error(?:[\s:]|$)/.test(step.text))
         items.push(stepItem(step, `r-${index}`, "response"));
       else stopReason = step.text;
       return;
@@ -268,7 +301,9 @@ export function buildFlow(record: RequestRecord): FlowModel {
   const stats = (record.parsed?.usageStats ?? record.usageStats) as
     | { totalInput?: number; output?: number; cacheRead?: number }
     | undefined;
-  const measured = finite(stats?.totalInput);
+  // A request that never finished reports zeros: that is no usage, not "0 tokens".
+  const reported = !!(stats?.totalInput || stats?.output);
+  const measured = reported ? finite(stats?.totalInput) : null;
   const inputTokens = measured ?? finite(record.parsed?.estTokens);
   const sum = (zone: FlowZone, kind?: FlowKind) =>
     items
@@ -305,8 +340,8 @@ export function buildFlow(record: RequestRecord): FlowModel {
     sections,
     inputTokens,
     estimated: measured == null && inputTokens != null,
-    cacheRead: finite(stats?.cacheRead),
-    outputTokens: finite(stats?.output),
+    cacheRead: reported ? finite(stats?.cacheRead) : null,
+    outputTokens: reported ? finite(stats?.output) : null,
     stopReason,
     waiting: !record.response && !returned.length,
   };
@@ -347,11 +382,12 @@ export function outcome(item: FlowItem): {
   text: string;
   /** Character count the text refers to; rendered with a hideable unit. */
   size?: number;
-  tone: "ok" | "error" | "quiet";
+  tone: "ok" | "error" | "warn" | "quiet";
 } {
   if (item.outcomeText != null)
     return { text: item.outcomeText, tone: item.status === "error" ? "error" : "quiet" };
   if (item.kind === "failed") return { text: "failed", tone: "error" };
+  if (item.kind === "cancelled") return { text: "cancelled", tone: "warn" };
   if (item.kind === "stop") return { text: "stopped early", tone: "error" };
   if (item.kind === "tool") {
     if (item.status === "ok") return { text: "ok · ", size: item.output?.length ?? 0, tone: "ok" };
@@ -369,3 +405,58 @@ export function outcome(item: FlowItem): {
 
 export const approxTokens = (tokens: number) =>
   tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+
+export const KIND_LABEL: Record<FlowKind, string> = {
+  system: "System prompt",
+  tools: "Tool definitions",
+  user: "User prompt",
+  assistant: "Assistant message",
+  thinking: "Reasoning",
+  tool: "Tool call",
+  output: "Tool output",
+  failed: "Request failed",
+  cancelled: "Request cancelled",
+  stop: "Response stopped early",
+  request: "Request without conversation steps",
+};
+
+/**
+ * The two lines that title an item in the preview pane. The title names the
+ * item; the line above adds only what the title does not already say, so a
+ * prompt is not headed "User prompt / User".
+ */
+export function previewHeading(item: FlowItem): { eyebrow: string; title: string } {
+  const tags = item.tags.map((tag) => TAG_INFO[tag]?.headline ?? tag);
+  const line = (...parts: (string | false | undefined)[]) =>
+    [...parts, ...tags].filter(Boolean).join(" · ");
+  switch (item.kind) {
+    case "tool":
+      return { eyebrow: line("Tool call"), title: item.name };
+    case "user":
+      return item.injected
+        ? { eyebrow: line("Sent in the user role"), title: "Harness message" }
+        : { eyebrow: line(), title: KIND_LABEL.user };
+    case "assistant": {
+      // "Assistant · refusal": the part after the dot is the block's own type.
+      const label = item.name.split(" · ")[1];
+      return { eyebrow: line(), title: KIND_LABEL.assistant + (label ? ` · ${label}` : "") };
+    }
+    case "system":
+      // Several system blocks are numbered: "System prompt 2".
+      return { eyebrow: line(), title: item.name };
+    case "tools": {
+      const count = item.tools?.length ?? 0;
+      return {
+        eyebrow: line(`${count} ${count === 1 ? "tool" : "tools"} offered to the model`),
+        title: KIND_LABEL.tools,
+      };
+    }
+    case "output":
+      return { eyebrow: line("No matching call in this request"), title: KIND_LABEL.output };
+    case "request":
+      // The first line of its text is "GET /v1/models".
+      return { eyebrow: line(KIND_LABEL.request), title: item.text.split("\n")[0] || item.name };
+    default:
+      return { eyebrow: line(), title: KIND_LABEL[item.kind] };
+  }
+}
