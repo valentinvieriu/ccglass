@@ -156,7 +156,8 @@ Playwright is not a project dependency. To drive the UI from a script, install
 
 ## Git
 
-- Default branch is `main`. Work on a branch; commit or push only when asked.
+- Commit directly on `main` and push to `origin main`; do not create feature branches.
+  Commit or push only when asked.
 - Recent commit subjects are plain sentences that state the user-visible
   outcome, for example "Rebuild the Messages and Tools tabs around what they
   are read for". Follow that style.
