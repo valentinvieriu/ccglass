@@ -1,5 +1,5 @@
 export function formatJson(text: string): { json: boolean; formatted: string } {
-  if (!/^[\[{]/.test(text.trimStart())) return { json: false, formatted: text };
+  if (!/^[[{]/.test(text.trimStart())) return { json: false, formatted: text };
   try {
     return { json: true, formatted: JSON.stringify(JSON.parse(text), null, 2) };
   } catch (error) {
@@ -15,7 +15,7 @@ export type JsonToken = {
 
 export function tokenizeJson(text: string): JsonToken[] {
   const pattern =
-    /"(?:\\.|[^"\\])*"(?=\s*:)|"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}\[\],:]/g;
+    /"(?:\\.|[^"\\])*"(?=\s*:)|"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}[\],:]/g;
   const tokens: JsonToken[] = [];
   let position = 0;
   for (const match of text.matchAll(pattern)) {

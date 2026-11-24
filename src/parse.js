@@ -85,7 +85,7 @@ function applyEvent(state, ev) {
   switch (ev.type) {
     case "message_start":
       state.model = ev.message?.model ?? state.model;
-      state.usage = { ...state.usage, ...(ev.message?.usage || {}) };
+      state.usage = { ...state.usage, ...ev.message?.usage };
       break;
     case "content_block_start":
       state.blocks[ev.index] = startBlock(ev.content_block);
