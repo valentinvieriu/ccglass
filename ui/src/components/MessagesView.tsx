@@ -19,7 +19,7 @@ import { approxTokens, matchesFilter, outcome, type FlowFilter, type FlowZone } 
 import { fmtApproxTokens, fmtChars, oneLine } from "../lib/format";
 import { buildMessages, type MessageGroup, type MessagePart, type Segment } from "../lib/messages";
 import { TAG_INFO } from "../lib/timeline";
-import { FilterBar, Highlight } from "./FlowItems";
+import { FilterBar, Highlight, roleIcon } from "./FlowItems";
 import { CodeView, CopyButton } from "./JsonView";
 
 const FILTERS: [FlowFilter, string][] = [
@@ -354,7 +354,8 @@ function Part({
           <Body
             key={index}
             text={segment.text}
-            mono={!!item.injected}
+            // Harness envelopes read as code; developer instructions read as prose.
+            mono={!!item.injected && !item.role}
             quiet={item.kind === "user" && !item.injected && !segment.human}
             reading={reading}
           />
@@ -387,7 +388,8 @@ export function MessageEntry({
   onJump: (id: string) => void;
   onOpenTool?: (name: string) => void;
 }) {
-  const Icon = ICONS[group.tone];
+  const role = group.parts.find((part) => part.item.role)?.item.role;
+  const Icon = role ? roleIcon(role) : ICONS[group.tone];
   const tags = [
     ...new Set(group.parts.flatMap((part) => (part.item.kind === "user" ? part.item.tags : []))),
   ].filter((tag) => TAG_INFO[tag] && tag !== "reminder");

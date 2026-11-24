@@ -41,6 +41,8 @@ export interface FlowItem {
   tags: string[];
   /** A user-role message the harness wrote, not the person. */
   injected?: boolean;
+  /** Instructions sent in their own role, such as "developer": never typed by the person. */
+  role?: string;
   /** What the person typed, when the sent message wraps it in harness envelopes. */
   human?: string;
   callId?: string;
@@ -91,6 +93,9 @@ export interface StepResult {
   text: string;
   isError?: boolean;
 }
+
+/** "developer" → "Developer". */
+export const roleName = (role: string) => role.charAt(0).toUpperCase() + role.slice(1);
 
 /** Turns one timeline step, plus its paired tool output, into a display item. */
 export function stepItem(
@@ -146,7 +151,8 @@ export function stepItem(
     return {
       ...base,
       kind: "system",
-      name: "System prompt",
+      // Chat Completions puts developer messages with the system blocks.
+      name: /\.developer$/.test(step.label ?? "") ? "Developer message" : "System prompt",
       summary: smartSummary(step) || "Empty",
       chars: step.text.length,
     };
@@ -176,6 +182,18 @@ export function stepItem(
       name: step.label ? `Assistant · ${step.label}` : "Assistant",
       summary: smartSummary(step) || "Empty message",
       chars: step.text.length,
+    };
+  // A developer or system message is the application's instructions, which
+  // the model ranks above the user's: name it by its role, never as a prompt.
+  if (step.role)
+    return {
+      ...base,
+      kind: "user",
+      name: roleName(step.role),
+      summary: smartSummary(step) || "Empty message",
+      chars: step.text.length,
+      injected: true,
+      role: step.role,
     };
   // Nothing left once the envelopes are gone means the harness wrote all of
   // it. A slash command is the exception: the person typed that.
@@ -234,8 +252,12 @@ export function buildFlow(record: RequestRecord): FlowModel {
 
   const system = view?.system ?? [];
   system.forEach((block, index) => {
-    const item = stepItem({ kind: "system", text: block.text || "" }, `sys-${index}`, "prefix");
-    if (system.length > 1) item.name = `System prompt ${index + 1}`;
+    const item = stepItem(
+      { kind: "system", label: block.label, text: block.text || "" },
+      `sys-${index}`,
+      "prefix",
+    );
+    if (system.length > 1) item.name = `${item.name} ${index + 1}`;
     if (block.cache) item.tags = [...item.tags, "cached"];
     items.push(item);
   });
@@ -440,6 +462,8 @@ export function previewHeading(item: FlowItem): { eyebrow: string; title: string
     case "tool":
       return { eyebrow: line("Tool call"), title: item.name };
     case "user":
+      if (item.role)
+        return { eyebrow: line(`Sent in the ${item.role} role`), title: `${item.name} message` };
       return item.injected
         ? { eyebrow: line("Sent in the user role"), title: "Harness message" }
         : { eyebrow: line(), title: KIND_LABEL.user };

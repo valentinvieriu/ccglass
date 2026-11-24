@@ -12,6 +12,7 @@ import {
   Terminal,
   TriangleAlert,
   User,
+  UserCog,
   Wrench,
   Zap,
   type LucideIcon,
@@ -36,6 +37,13 @@ const ICONS: Record<FlowItem["kind"], LucideIcon> = {
   request: ArrowLeftRight,
 };
 
+/**
+ * A message sent in its own role: the developer is a party like the user, so
+ * it gets a person; a system-role message reads like the system prompt.
+ */
+export const roleIcon = (role: string): LucideIcon =>
+  role === "developer" ? UserCog : ICONS.system;
+
 /** Tokens first; the exact character count is the detail behind the estimate. */
 const sizeText = (chars: number) => `${fmtApproxTokens(chars)} · ${fmtChars(chars)}`;
 
@@ -53,7 +61,7 @@ function tone(item: FlowItem) {
 }
 
 function Tile({ item, large = false }: { item: FlowItem; large?: boolean }) {
-  const Icon = item.injected ? Zap : ICONS[item.kind];
+  const Icon = item.role ? roleIcon(item.role) : item.injected ? Zap : ICONS[item.kind];
   return (
     <span className={`flow-tile flow-tile-${tone(item)} ${large ? "flow-tile-lg" : ""}`}>
       <Icon size={large ? 16 : 13} aria-hidden="true" />

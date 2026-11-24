@@ -153,8 +153,13 @@ export function flowSteps(
         });
       } else if (m.type === "thinking") {
         steps.push({ kind: "thinking", text: m.text || "" });
+      } else if (m.role === "assistant") {
+        steps.push({ kind: "assistant", text: m.text || "" });
       } else {
-        steps.push({ kind: m.role === "assistant" ? "assistant" : "user", text: m.text || "" });
+        // Instructions sent as a message (OpenAI's "developer" and "system"
+        // roles) sit in the conversation but outrank the user: keep the role.
+        const role = m.role && m.role !== "user" ? String(m.role) : undefined;
+        steps.push({ kind: "user", text: m.text || "", ...(role ? { role } : {}) });
       }
     }
   }

@@ -339,6 +339,41 @@ describe("flow and replay models", () => {
     expect(empty.items.at(-1)).toMatchObject({ kind: "assistant", summary: "Empty message" });
   });
 
+  it("names a developer message by its role and never takes it for a prompt", () => {
+    const developer = {
+      label: "input[0].developer",
+      role: "developer",
+      type: "message",
+      text: "Follow the style guide.",
+    };
+    const record = chat("2", [developer, prompt], [{ type: "text", text: "Done." }]);
+    const entries = [
+      { id: record.id, session: "session", seq: 2, ts: 2, model: "local", nMessages: 2 },
+    ] as EntrySummary[];
+    const replay = buildReplay(entries, { [record.id]: record }, buildTimeline([record]), false);
+    const line = replay.lines.find((line) => line.item.text === developer.text)!;
+    expect(line.item).toMatchObject({ kind: "user", name: "Developer", role: "developer" });
+    expect(line.prompt).toBe(false);
+    expect(replay.lines.filter((line) => line.prompt).map((line) => line.item.name)).toEqual([
+      "User",
+    ]);
+    expect(previewHeading(line.item)).toEqual({
+      eyebrow: "Sent in the developer role",
+      title: "Developer message",
+    });
+    // Chat Completions sends it among the system blocks.
+    const chatRecord = chat("3", [prompt], []);
+    chatRecord.parsed!.view!.system = [
+      { label: "system[0].system", text: "Be brief." },
+      { label: "system[1].developer", text: "Follow the style guide." },
+    ];
+    expect(
+      buildFlow(chatRecord)
+        .items.slice(0, 2)
+        .map((item) => item.name),
+    ).toEqual(["System prompt 1", "Developer message 2"]);
+  });
+
   it("titles the preview without saying the same thing twice", () => {
     const heading = (step: TimelineStep) => previewHeading(stepItem(step, "x", "new"));
     expect(heading({ kind: "user", text: "Run the tests" })).toEqual({

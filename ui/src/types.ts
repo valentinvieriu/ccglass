@@ -178,6 +178,11 @@ export interface TimelineStep {
   text: string;
   label?: string;
   name?: string;
+  /**
+   * The wire role of a sent message that is neither the person nor the model,
+   * such as "developer" or "system" in an OpenAI Responses input.
+   */
+  role?: string;
   callId?: string;
   isError?: boolean;
   latest?: boolean;
