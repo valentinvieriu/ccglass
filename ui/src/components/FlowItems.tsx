@@ -97,7 +97,8 @@ export const ItemRow = memo(function ItemRow({
   outcomeText?: string;
   onSelect: (id: string) => void;
 }) {
-  const result = outcomeText != null ? { text: outcomeText, tone: "quiet" as const } : outcome(item);
+  const result =
+    outcomeText != null ? { text: outcomeText, tone: "quiet" as const } : outcome(item);
   const quiet = item.kind !== "user" && item.kind !== "assistant";
   const tags = item.tags.map((tag) => TAG_INFO[tag]?.headline ?? tag);
   const size = result.size != null ? fmtApproxTokens(result.size) : "";
@@ -249,7 +250,11 @@ function Block({
 export function PaneClose({ onClose }: { onClose?: () => void }) {
   if (!onClose) return null;
   return (
-    <button type="button" className="flow-pane-close button button-ghost button-sm" onClick={onClose}>
+    <button
+      type="button"
+      className="flow-pane-close button button-ghost button-sm"
+      onClick={onClose}
+    >
       <ArrowLeft size={13} aria-hidden="true" />
       Back to the list
     </button>
@@ -302,9 +307,7 @@ export function ItemPreview({
           {tool && !noInput && <p className="mono">{item.summary}</p>}
         </div>
         {tool && (
-          <span
-            className={`badge ${item.status === "error" ? "badge-error" : "badge-muted"}`}
-          >
+          <span className={`badge ${item.status === "error" ? "badge-error" : "badge-muted"}`}>
             {status}
           </span>
         )}
@@ -364,7 +367,11 @@ export function ItemPreview({
           </>
         ) : item.human ? (
           <>
-            <Block title="What the user typed" copyLabel="Copy what the user typed" text={item.human} />
+            <Block
+              title="What the user typed"
+              copyLabel="Copy what the user typed"
+              text={item.human}
+            />
             <Block
               title={`Full message as sent · ${sizeText(item.text.length)}`}
               copyLabel="Copy full message"

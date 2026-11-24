@@ -35,7 +35,12 @@ test("reassembleResponse assembles streamed tool_use input json", () => {
 });
 
 test("reassembleResponse parses non-streaming JSON", () => {
-  const json = JSON.stringify({ model: "x", stop_reason: "end_turn", usage: { input_tokens: 3 }, content: [{ type: "text", text: "hi" }] });
+  const json = JSON.stringify({
+    model: "x",
+    stop_reason: "end_turn",
+    usage: { input_tokens: 3 },
+    content: [{ type: "text", text: "hi" }],
+  });
   const r = reassembleResponse(json);
   assert.equal(r.streamed, false);
   assert.equal(r.content[0].text, "hi");
@@ -43,7 +48,13 @@ test("reassembleResponse parses non-streaming JSON", () => {
 
 test("reassembleResponse recovers Bedrock event-stream envelopes from a lossy body", () => {
   const events = [
-    { type: "message_start", message: { model: "anthropic.claude-opus-4-5-20251101-v1:0", usage: { input_tokens: 30, cache_read_input_tokens: 10 } } },
+    {
+      type: "message_start",
+      message: {
+        model: "anthropic.claude-opus-4-5-20251101-v1:0",
+        usage: { input_tokens: 30, cache_read_input_tokens: 10 },
+      },
+    },
     { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
     { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } },
     { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: " there" } },

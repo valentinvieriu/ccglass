@@ -61,7 +61,9 @@ export function prepareSpawn(command, args, env = process.env, platform = proces
   }
 
   const comspec = env.ComSpec || env.COMSPEC || "cmd.exe";
-  const commandLine = ["call", quoteCmdArg(resolved || command), ...args.map(quoteCmdArg)].join(" ");
+  const commandLine = ["call", quoteCmdArg(resolved || command), ...args.map(quoteCmdArg)].join(
+    " ",
+  );
   return { command: comspec, args: ["/d", "/c", commandLine], windowsVerbatimArguments: true };
 }
 

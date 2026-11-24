@@ -10,7 +10,7 @@
 // Also exposes the decoded body (chunked unwrapped) for storage/display.
 
 const HEADERS = 0;
-const BODY_LENGTH = 1;     // Content-Length framing
+const BODY_LENGTH = 1; // Content-Length framing
 const BODY_CHUNK_SIZE = 2; // chunked: reading the size line
 const BODY_CHUNK_DATA = 3; // chunked: reading `size` bytes of data
 const BODY_CHUNK_CRLF = 4; // chunked: reading the trailing CRLF after data
@@ -76,9 +76,10 @@ export class ResponseParser {
         progress = true;
       } else if (this.state === BODY_LENGTH) {
         if (this.buf.length > 0) {
-          const take = this.contentLength === Infinity
-            ? this.buf.length
-            : Math.min(this.buf.length, this.contentLength - this.bodyBytesSeen);
+          const take =
+            this.contentLength === Infinity
+              ? this.buf.length
+              : Math.min(this.buf.length, this.contentLength - this.bodyBytesSeen);
           this.bodyParts.push(this.buf.slice(0, take));
           this.bodyBytesSeen += take;
           this.buf = this.buf.slice(take);

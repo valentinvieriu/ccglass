@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { CodeView, ContentBlock } from "../src/components/JsonView";
 import { formatJson, tokenizeJson } from "../src/lib/json";
 

@@ -5,11 +5,16 @@ process.env.CCGLASS_CORS_ORIGINS ??= "http://localhost:5173";
 
 main([
   "proxy",
-  "--provider", "openai",
-  "--upstream", process.env.CCGLASS_UPSTREAM ?? "http://127.0.0.1:6655",
-  "--proxy-port", process.env.CCGLASS_PROXY_PORT ?? "6656",
-  "--port", process.env.CCGLASS_DASHBOARD_PORT ?? "6657",
-  "--dir", ".ccglass",
+  "--provider",
+  "openai",
+  "--upstream",
+  process.env.CCGLASS_UPSTREAM ?? "http://127.0.0.1:6655",
+  "--proxy-port",
+  process.env.CCGLASS_PROXY_PORT ?? "6656",
+  "--port",
+  process.env.CCGLASS_DASHBOARD_PORT ?? "6657",
+  "--dir",
+  ".ccglass",
   "--no-open",
   ...process.argv.slice(2),
 ]).catch((error) => {

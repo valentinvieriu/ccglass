@@ -66,8 +66,7 @@ export const routeSession = (route: Route) => (route.view === "sessions" ? null 
 
 /** One level up: what Escape and "back" mean at each place. */
 export function parentRoute(route: Route): Route | null {
-  if (route.view === "compare")
-    return { view: "request", session: route.session, seq: route.seq };
+  if (route.view === "compare") return { view: "request", session: route.session, seq: route.seq };
   if (route.view === "request") return { view: "session", session: route.session, tab: "replay" };
   if (route.view === "session") return HOME;
   return null;

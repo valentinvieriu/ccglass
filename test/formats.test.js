@@ -9,7 +9,10 @@ test("detectFormat: by recorded format, url, and body shape", () => {
   assert.equal(detectFormat({ request: { url: "/v1/responses" } }), "openai");
   assert.equal(detectFormat({ request: { url: "/v1/chat/completions" } }), "openai");
   assert.equal(detectFormat({ request: { body: { instructions: "x", input: [] } } }), "openai");
-  assert.equal(detectFormat({ request: { url: "/v1/messages", body: { system: [] } } }), "anthropic");
+  assert.equal(
+    detectFormat({ request: { url: "/v1/messages", body: { system: [] } } }),
+    "anthropic",
+  );
 });
 
 test("openai.view extracts instructions/input/tools (Responses API)", () => {
@@ -19,7 +22,9 @@ test("openai.view extracts instructions/input/tools (Responses API)", () => {
     input: [
       { type: "message", role: "user", content: [{ type: "input_text", text: "list files" }] },
     ],
-    tools: [{ type: "function", name: "shell", description: "run shell", parameters: { type: "object" } }],
+    tools: [
+      { type: "function", name: "shell", description: "run shell", parameters: { type: "object" } },
+    ],
   };
   const v = openai.view(body);
   assert.equal(v.system[0].text, "You are Codex.");
@@ -30,8 +35,16 @@ test("openai.view extracts instructions/input/tools (Responses API)", () => {
 test("anthropic.view surfaces tool name, call id, and error on history blocks", () => {
   const body = {
     messages: [
-      { role: "assistant", content: [{ type: "tool_use", id: "toolu_42", name: "Bash", input: { command: "ls" } }] },
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_42", is_error: true, content: "boom" }] },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "toolu_42", name: "Bash", input: { command: "ls" } }],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "toolu_42", is_error: true, content: "boom" },
+        ],
+      },
     ],
   };
   const v = anthropic.view(body);
@@ -48,7 +61,13 @@ test("anthropic.view surfaces tool name, call id, and error on history blocks", 
 test("openai.view surfaces tool calls (Chat Completions + Responses)", () => {
   const chat = openai.view({
     messages: [
-      { role: "assistant", content: null, tool_calls: [{ id: "call_1", function: { name: "get_weather", arguments: '{"city":"SF"}' } }] },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "call_1", function: { name: "get_weather", arguments: '{"city":"SF"}' } },
+        ],
+      },
       { role: "tool", tool_call_id: "call_1", content: "72F" },
     ],
   });
@@ -97,12 +116,23 @@ test("openai.reassemble rebuilds Chat Completions stream", () => {
 });
 
 test("openai.usageStats subtracts cached tokens from input without billing fields", () => {
-  const c = openai.usageStats({ input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 800 });
+  const c = openai.usageStats({
+    input_tokens: 1000,
+    output_tokens: 100,
+    cache_read_input_tokens: 800,
+  });
   assert.equal(c.cacheRead, 800);
   assert.equal(c.input, 200); // uncached portion (1000 - 800), matching Anthropic's `input`
   assert.equal(c.totalInput, 1000); // gross stays for cache-hit math
   assert.ok(Math.abs(c.cacheHitRate - 0.8) < 1e-9);
-  assert.deepEqual(Object.keys(c).sort(), ["cacheHitRate", "cacheRead", "cacheWrite", "input", "output", "totalInput"]);
+  assert.deepEqual(Object.keys(c).sort(), [
+    "cacheHitRate",
+    "cacheRead",
+    "cacheWrite",
+    "input",
+    "output",
+    "totalInput",
+  ]);
 });
 
 test("getAdapter falls back to anthropic", () => {

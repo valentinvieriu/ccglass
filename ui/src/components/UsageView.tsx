@@ -35,7 +35,9 @@ export function statsBucket(stats: SessionStats): TokenBucket {
 
 /** A count short enough to scan, with the exact number one hover away. */
 function Compact({ value }: { value: number | null | undefined }) {
-  return <span title={value == null ? undefined : `${fmt(value)} tokens`}>{fmtCompact(value)}</span>;
+  return (
+    <span title={value == null ? undefined : `${fmt(value)} tokens`}>{fmtCompact(value)}</span>
+  );
 }
 
 export function StatCard({

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import SessionsView, { type SessionsViewProps } from "../src/components/SessionsView";
 import { SessionUsage } from "../src/components/UsageView";
 import DiffView from "../src/components/DiffView";
@@ -196,7 +196,11 @@ describe("sessions home and usage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading usage…");
     rerender(
       <SessionUsage
-        stats={[stats("all", 12, 1_200_000), stats("big", 8, 1_000_000), stats("small", 3, 200_000)]}
+        stats={[
+          stats("all", 12, 1_200_000),
+          stats("big", 8, 1_000_000),
+          stats("small", 3, 200_000),
+        ]}
         loading={false}
       />,
     );
@@ -204,7 +208,9 @@ describe("sessions home and usage", () => {
     expect(screen.getByText("1.20M")).toHaveAttribute("title", "1,200,000 tokens");
     expect(screen.getByText("600k")).toBeInTheDocument();
     expect(screen.getByText("1 request returned no usage data")).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /^big/ })).toHaveTextContent("big81,000,000500,00050%40");
+    expect(screen.getByRole("row", { name: /^big/ })).toHaveTextContent(
+      "big81,000,000500,00050%40",
+    );
     expect(screen.getByRole("meter", { name: "Cache hit rate for small" })).toHaveValue(0.5);
     // Cache writes are not known per session, so no column claims them.
     expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
@@ -215,7 +221,8 @@ describe("sessions home and usage", () => {
     // Names are switched off, so the session table must not trigger the lookup.
     vi.stubGlobal("localStorage", { getItem: () => "0", setItem: () => {} });
     render(home({ controllable: true, ...actions }));
-    const menu = () => fireEvent.click(screen.getByRole("button", { name: "More actions for session saved" }));
+    const menu = () =>
+      fireEvent.click(screen.getByRole("button", { name: "More actions for session saved" }));
     menu();
     fireEvent.click(screen.getByRole("menuitem", { name: /Clear requests…/ }));
     // The confirmation names what is about to be cleared and how much of it.
@@ -262,16 +269,28 @@ describe("sessions home and usage", () => {
     expect(await screen.findByText("Saved title")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Show session names" }));
     expect(screen.queryByText("Saved title")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /More actions for session/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /More actions for session/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/Read-only capture/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: /^saved/ }));
     fireEvent.click(screen.getByRole("button", { name: "Export session saved" }));
-    expect(actions.navigate).toHaveBeenCalledWith({ view: "session", session: "saved", tab: "replay" });
+    expect(actions.navigate).toHaveBeenCalledWith({
+      view: "session",
+      session: "saved",
+      tab: "replay",
+    });
     expect(actions.onExportSession).toHaveBeenCalledWith("saved");
   });
 
   it("tells a new user how to get a first session", () => {
-    render(home({ sessions: [], usage: { ...usage, sessionCount: 0, bySession: [] }, controllable: true }));
+    render(
+      home({
+        sessions: [],
+        usage: { ...usage, sessionCount: 0, bySession: [] },
+        controllable: true,
+      }),
+    );
     expect(screen.getByText("Your sessions will appear here")).toBeInTheDocument();
     expect(screen.getByText(/Press Record, then point your agent/)).toBeInTheDocument();
   });
@@ -294,7 +313,9 @@ describe("complete request comparison", () => {
     expect(baseline).toHaveValue("saved/2");
     // Requests are named like their rows in the list, not by capture id; one
     // model in the whole session is left out of every option.
-    expect(within(baseline).getByRole("option", { name: "#1 · local-model" })).toHaveValue("saved/1");
+    expect(within(baseline).getByRole("option", { name: "#1 · local-model" })).toHaveValue(
+      "saved/1",
+    );
     expect(screen.queryByText("saved/2")).not.toBeInTheDocument();
     expect(screen.getByText("What request #3 sent that #2 did not.")).toBeInTheDocument();
     expect(screen.getByText("removed content")).toBeInTheDocument();
@@ -317,7 +338,9 @@ describe("complete request comparison", () => {
     // The later request as the baseline turns what it added into "removed": say so.
     expect(await screen.findByText(/A is the later request/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Swap A and B" }));
-    await waitFor(() => expect(screen.queryByText(/A is the later request/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText(/A is the later request/)).not.toBeInTheDocument(),
+    );
   });
 
   it("uses one column when a side is empty, which is the usual case for a growing conversation", async () => {
@@ -329,7 +352,12 @@ describe("complete request comparison", () => {
         common: [{ label: "shared", text: "shared content" }],
         counts: { added: 1, removed: 0, common: 1, cachedInB: 0 },
       })
-      .mockResolvedValue({ added: [], removed: [], common: [], counts: { added: 0, removed: 0, common: 0, cachedInB: 0 } });
+      .mockResolvedValue({
+        added: [],
+        removed: [],
+        common: [],
+        counts: { added: 0, removed: 0, common: 0, cachedInB: 0 },
+      });
     const back = { seq: 3, open: vi.fn() };
     const { container, rerender } = render(
       <DiffView picks={["saved/2", "saved/3"]} records={{}} session="saved" back={back} />,

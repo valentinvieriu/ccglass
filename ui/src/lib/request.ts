@@ -196,7 +196,11 @@ export function responseSentence(record: RequestRecord) {
   if ((status ?? 0) >= 400) return `The server answered with an error${after}`;
   const output = requestTokens(record).output;
   const parts = [
-    output ? `${fmt(output)} tokens${latency != null ? ` in ${fmtMs(latency)}` : ""}` : latency != null ? fmtMs(latency) : "",
+    output
+      ? `${fmt(output)} tokens${latency != null ? ` in ${fmtMs(latency)}` : ""}`
+      : latency != null
+        ? fmtMs(latency)
+        : "",
     firstToken != null ? `first token after ${fmtMs(firstToken)}` : "",
   ];
   return parts.filter(Boolean).join(" · ");
@@ -287,7 +291,9 @@ export function requestDetails(record: RequestRecord): DetailGroup[] {
   groups.push({
     title: "Request",
     rows: [
-      ...(isModelRequest(record) ? [{ label: "Model", value: String(model || "Unknown model") }] : []),
+      ...(isModelRequest(record)
+        ? [{ label: "Model", value: String(model || "Unknown model") }]
+        : []),
       { label: "Format", value: parsed?.format || record.format || "—" },
       ...(isModelRequest(record)
         ? [

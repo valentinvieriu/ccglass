@@ -167,7 +167,10 @@ export function DashboardHeader({
           role="status"
           title={`${CONNECTION[connection]}. Captures stay on this machine.`}
         >
-          <i className={`status-dot ${connected ? "status-ok" : "status-wait"}`} aria-hidden="true" />
+          <i
+            className={`status-dot ${connected ? "status-ok" : "status-wait"}`}
+            aria-hidden="true"
+          />
           <span className={connected ? "sr-only" : ""}>{CONNECTION[connection]}</span>
         </span>
       </div>
@@ -195,7 +198,11 @@ export function DashboardHeader({
                 )}
                 <li className="crumb">
                   {crumb.route ? (
-                    <a className="crumb-link" title={crumb.title} {...routeLink(crumb.route, navigate)}>
+                    <a
+                      className="crumb-link"
+                      title={crumb.title}
+                      {...routeLink(crumb.route, navigate)}
+                    >
                       {body}
                     </a>
                   ) : (
@@ -212,7 +219,10 @@ export function DashboardHeader({
       </nav>
       <div className="topbar-actions">
         {!controllable && connected && (
-          <span className="badge badge-muted" title="This dashboard reads saved captures. Recording controls are unavailable.">
+          <span
+            className="badge badge-muted"
+            title="This dashboard reads saved captures. Recording controls are unavailable."
+          >
             Read-only
           </span>
         )}

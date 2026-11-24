@@ -31,13 +31,7 @@ function adjacentPair(options: RequestOption[], selected?: string | null): strin
   return [(before ?? options[end - 1]).id, options[end].id];
 }
 
-function Blocks({
-  side,
-  blocks,
-}: {
-  side: "added" | "removed";
-  blocks: Block[];
-}) {
+function Blocks({ side, blocks }: { side: "added" | "removed"; blocks: Block[] }) {
   const added = side === "added";
   return (
     <section className="min-w-0" aria-label={added ? "Added in B" : "Removed from A"}>
@@ -386,11 +380,7 @@ export default function DiffView({
                       key={`${block.label}-${index}`}
                       title={block.label || block.kind || "Unchanged block"}
                       value={block.text}
-                      tags={
-                        block.cache ? (
-                          <span className="badge">cached</span>
-                        ) : undefined
-                      }
+                      tags={block.cache ? <span className="badge">cached</span> : undefined}
                     />
                   ))}
                 </div>

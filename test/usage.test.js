@@ -13,7 +13,12 @@ function mkRoot(label) {
 // Build an Anthropic-style non-streaming response body with a known usage block,
 // then return it as `raw` JSON the way the proxy persists it. Reassembly via the
 // anthropic adapter reads usage from the parsed JSON.
-function anthropicResp({ input_tokens = 0, output_tokens = 0, cache_creation_input_tokens = 0, cache_read_input_tokens = 0 } = {}) {
+function anthropicResp({
+  input_tokens = 0,
+  output_tokens = 0,
+  cache_creation_input_tokens = 0,
+  cache_read_input_tokens = 0,
+} = {}) {
   return JSON.stringify({
     type: "message",
     role: "assistant",
@@ -25,7 +30,12 @@ function anthropicResp({ input_tokens = 0, output_tokens = 0, cache_creation_inp
 
 function record(store, model, usage) {
   const rec = store.add({
-    request: { method: "POST", url: "/v1/messages", headers: {}, body: { model, messages: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { model, messages: [], tools: [] },
+    },
   });
   rec.response = { status: 200, raw: anthropicResp(usage) };
   store.update(rec);
@@ -51,7 +61,12 @@ function openaiResp({ input_tokens = 0, output_tokens = 0, cached_tokens = 0 } =
 
 function recordOpenAI(store, model, usage) {
   const rec = store.add({
-    request: { method: "POST", url: "/v1/responses", headers: {}, body: { model, input: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/responses",
+      headers: {},
+      body: { model, input: [], tools: [] },
+    },
   });
   rec.response = { status: 200, raw: openaiResp(usage) };
   store.update(rec);
@@ -61,13 +76,21 @@ function recordOpenAI(store, model, usage) {
 test("summarizeUsage aggregates totals, byModel, bySession across roots", () => {
   const root = mkRoot("agg");
   const s1 = new Store({ root, format: "anthropic" });
-  record(s1, "claude-opus-4-7", { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 900 });
+  record(s1, "claude-opus-4-7", {
+    input_tokens: 100,
+    output_tokens: 50,
+    cache_read_input_tokens: 900,
+  });
   record(s1, "claude-sonnet-4-6", { input_tokens: 200, output_tokens: 80 });
 
   // Make a second session by writing through a fresh Store (its sessionId is its ctor timestamp,
   // which monotonically advances).
   const s2 = new Store({ root, format: "anthropic" });
-  record(s2, "claude-opus-4-7", { input_tokens: 50, output_tokens: 25, cache_read_input_tokens: 0 });
+  record(s2, "claude-opus-4-7", {
+    input_tokens: 50,
+    output_tokens: 25,
+    cache_read_input_tokens: 0,
+  });
 
   const out = summarizeUsage([root]);
 
@@ -76,11 +99,11 @@ test("summarizeUsage aggregates totals, byModel, bySession across roots", () => 
   assert.equal(out.unmeasured, 0);
 
   // totals
-  assert.equal(out.totals.input, 100 + 200 + 50);          // 350
-  assert.equal(out.totals.output, 50 + 80 + 25);           // 155
+  assert.equal(out.totals.input, 100 + 200 + 50); // 350
+  assert.equal(out.totals.output, 50 + 80 + 25); // 155
   assert.equal(out.totals.cacheRead, 900);
   assert.equal(out.totals.cacheWrite, 0);
-  assert.equal(out.totals.totalInput, 350 + 900);          // 1250
+  assert.equal(out.totals.totalInput, 350 + 900); // 1250
   assert.ok(Math.abs(out.totals.cacheHitRate - 900 / 1250) < 1e-9);
   assert.equal("usd" in out.totals, false);
 
@@ -95,8 +118,10 @@ test("summarizeUsage aggregates totals, byModel, bySession across roots", () => 
   // don't have to re-sort — the second Store was constructed after the first
   // so its session id is greater and must sort first.
   assert.equal(out.bySession.length, 2);
-  assert.ok(out.bySession[0].session > out.bySession[1].session,
-    `expected newest-first; got ${out.bySession.map((s) => s.session).join(", ")}`);
+  assert.ok(
+    out.bySession[0].session > out.bySession[1].session,
+    `expected newest-first; got ${out.bySession.map((s) => s.session).join(", ")}`,
+  );
   for (const session of out.bySession) {
     assert.ok(session.session);
     assert.ok(session.entries >= 1);
@@ -116,7 +141,12 @@ test("summarizeUsage counts records without usage as unmeasured", () => {
 
   // A pending request (no response yet) — must be counted in `unmeasured`, not totals.
   store.add({
-    request: { method: "POST", url: "/v1/messages", headers: {}, body: { model: "claude-opus-4-7", messages: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { model: "claude-opus-4-7", messages: [], tools: [] },
+    },
   });
 
   // A real request with usage — must be counted in totals.
@@ -139,9 +169,10 @@ test("summarizeUsage sorts models by total input, not output volume or price tie
     record(store, "claude-haiku-4-5", { input_tokens: 20, cache_read_input_tokens: 200 });
     record(store, "claude-sonnet-4-6", { input_tokens: 220 });
     const result = summarizeUsage([root]);
-    assert.deepEqual(result.byModel.map((row) => row.model), [
-      "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7",
-    ]);
+    assert.deepEqual(
+      result.byModel.map((row) => row.model),
+      ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"],
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -193,7 +224,12 @@ test("summarizeUsage buckets by the reassembled response model, not the request 
   const root = mkRoot("resp-model");
   const store = new Store({ root, format: "anthropic" });
   const rec = store.add({
-    request: { method: "POST", url: "/v1/messages", headers: {}, body: { messages: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { messages: [], tools: [] },
+    },
   });
   rec.response = {
     status: 200,
@@ -222,7 +258,12 @@ test("summarizeUsage groups unknown model under 'unknown'", () => {
   const store = new Store({ root, format: "anthropic" });
   // Request body without `model`: aggregator must still count it, bucketed as "unknown".
   const rec = store.add({
-    request: { method: "POST", url: "/v1/messages", headers: {}, body: { messages: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { messages: [], tools: [] },
+    },
   });
   rec.response = { status: 200, raw: anthropicResp({ input_tokens: 7, output_tokens: 3 }) };
   store.update(rec);

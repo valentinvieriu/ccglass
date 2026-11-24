@@ -173,7 +173,12 @@ export function buildMessages(record: RequestRecord): MessagesModel {
   parts.forEach((part) => {
     const id = part.item.callId;
     if (!id) return;
-    const other = part.item.kind === "tool" ? outputs.get(id) : part.item.kind === "output" ? calls.get(id) : undefined;
+    const other =
+      part.item.kind === "tool"
+        ? outputs.get(id)
+        : part.item.kind === "output"
+          ? calls.get(id)
+          : undefined;
     if (other == null || other === part.index) return;
     part.pair = { id: `m-${other}`, group: groups[groupOf.get(`m-${other}`) ?? 0].number };
   });

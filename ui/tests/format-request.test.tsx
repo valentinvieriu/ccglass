@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import RequestDetail from "../src/components/RequestDetail";
 import { RequestList } from "../src/components/RequestList";
 import { SessionMetrics } from "../src/components/SessionMetrics";
@@ -90,7 +90,11 @@ const model: RequestRecord = {
   seq: 4,
   latencyMs: 2250,
   timing: { totalMs: 2250, ttftMs: 1270, genMs: 980 },
-  request: { method: "POST", url: "/v1/chat/completions", body: { model: "nemotron", messages: [] } },
+  request: {
+    method: "POST",
+    url: "/v1/chat/completions",
+    body: { model: "nemotron", messages: [] },
+  },
   response: { status: 200 },
   parsed: {
     view: { system: [], tools: [], messages: [{ role: "user", type: "text", text: "hi" }] },
@@ -109,7 +113,14 @@ const cancelled: RequestRecord = {
     view: model.parsed!.view,
     response: { error: "client disconnected" },
     estTokens: 42_917,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalInput: 0, cacheHitRate: 0 },
+    usageStats: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalInput: 0,
+      cacheHitRate: 0,
+    },
   },
 };
 const dropped: RequestRecord = {
@@ -129,7 +140,14 @@ const probe: RequestRecord = {
     view: { system: [], tools: [], messages: [] },
     response: { streamed: true, raw: "404 page not found\n" },
     estTokens: 0,
-    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalInput: 0, cacheHitRate: 0 },
+    usageStats: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalInput: 0,
+      cacheHitRate: 0,
+    },
   },
 };
 
@@ -144,7 +162,11 @@ describe("what a request says about itself", () => {
         "stop: tool_calls",
       ],
     });
-    expect(requestTokens(model)).toMatchObject({ totalInput: 47_247, cacheRead: 46_302, measured: true });
+    expect(requestTokens(model)).toMatchObject({
+      totalInput: 47_247,
+      cacheRead: 46_302,
+      measured: true,
+    });
   });
 
   it("says what happened to a failed request instead of counting tokens that never came", () => {
@@ -173,7 +195,9 @@ describe("what a request says about itself", () => {
       "Cancelled after 8.85s · the client closed the connection before the response finished",
     );
     // An error status is a failure whatever else was recorded.
-    expect(recordFailed({ ...cancelled, response: { status: 502, error: "client disconnected" } })).toBe(true);
+    expect(
+      recordFailed({ ...cancelled, response: { status: 502, error: "client disconnected" } }),
+    ).toBe(true);
     // No first token or generation is reported for a response that never finished.
     expect(requestDetails(cancelled)[0]).toEqual({
       title: "Timing",
@@ -209,7 +233,10 @@ describe("what a request says about itself", () => {
     expect(requestTitle(probe)).toBe("GET /orchestrator/v1/chat/completions/models");
     expect(requestTitle(model)).toBe("nemotron");
     expect(requestTabs(probe)).toEqual(["response", "http"]);
-    expect(requestFacts(probe)).toEqual({ status: { label: "HTTP 404", tone: "error" }, facts: ["361ms"] });
+    expect(requestFacts(probe)).toEqual({
+      status: { label: "HTTP 404", tone: "error" },
+      facts: ["361ms"],
+    });
     expect(responseSentence(probe)).toBe("The server answered with an error after 361ms");
   });
 
@@ -225,10 +252,14 @@ describe("what a request says about itself", () => {
 
   it("shows a non-model request with its method and path and only the tabs that apply", () => {
     render(<RequestDetail record={probe} />);
-    expect(screen.getByRole("heading", { name: "GET /orchestrator/v1/chat/completions/models" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "GET /orchestrator/v1/chat/completions/models" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["response", "HTTP"]);
     expect(screen.getByRole("tab", { name: "response" })).toHaveAttribute("aria-selected", "true");
-    expect(within(screen.getByLabelText("Request outcome")).getByText("HTTP 404")).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Request outcome")).getByText("HTTP 404"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/first token/)).not.toBeInTheDocument();
     expect(screen.queryByText("streamed")).not.toBeInTheDocument();
     expect(screen.queryByText(/0 tokens/)).not.toBeInTheDocument();
@@ -268,9 +299,13 @@ describe("request list and session numbers", () => {
       />,
     );
     expect(screen.getByPlaceholderText("Filter by prompt, tool or model")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Failed requests (2)" })).toHaveTextContent("Failed (2)");
+    expect(screen.getByRole("button", { name: "Failed requests (2)" })).toHaveTextContent(
+      "Failed (2)",
+    );
     // A healthy request shows no status; what went wrong is the only pill in the list.
-    expect(screen.getByRole("button", { name: /nemotron.*#1/s })).toHaveTextContent(/^nemotron#1\+0:00 · 1\.20s$/);
+    expect(screen.getByRole("button", { name: /nemotron.*#1/s })).toHaveTextContent(
+      /^nemotron#1\+0:00 · 1\.20s$/,
+    );
     const second = screen.getByRole("button", { name: /nemotron.*#2/s });
     expect(second).toHaveTextContent(/^nemotron#2error\+0:57 · 1\.20s$/);
     expect(screen.getByRole("button", { name: /nemotron.*#3/s })).toHaveTextContent("#3404");
@@ -304,7 +339,9 @@ describe("request list and session numbers", () => {
     expect(line().getByText("1.06M tokens in (97% cached)").title).toBe(
       "Input (total): 1,056,742 tokens, of which cached: 1,025,040",
     );
-    expect(line().getByText("4.51k tokens out").title).toBe("Output: 4,512 tokens from 21 requests");
+    expect(line().getByText("4.51k tokens out").title).toBe(
+      "Output: 4,512 tokens from 21 requests",
+    );
     expect(line().getByText("avg 2.00s").title).toBe("Average latency 2.00s · slowest 2.80s");
     // A model filter narrows every number, so the line names the model.
     expect(sessionFacts(entries, stats, "nemotron")[0].text).toBe("3 requests to nemotron");
@@ -325,7 +362,17 @@ describe("request list and session numbers", () => {
       entry,
       prompt: false,
       where: "",
-      item: { id: "i", zone: "new", kind: "user", name: "User", summary: "", text: "", chars: 0, tags: [], ...item },
+      item: {
+        id: "i",
+        zone: "new",
+        kind: "user",
+        name: "User",
+        summary: "",
+        text: "",
+        chars: 0,
+        tags: [],
+        ...item,
+      },
     });
     const failed = entry(2, { status: null, error: "socket hang up" });
     const stopped = entry(3, { status: null, error: "client disconnected" });
@@ -333,8 +380,12 @@ describe("request list and session numbers", () => {
     expect(matchesReplayFilter("failed", line(stopped, {}), {})).toBe(false);
     expect(matchesReplayFilter("cancelled", line(stopped, {}), {})).toBe(true);
     expect(matchesReplayFilter("cancelled", line(failed, {}), {})).toBe(false);
-    expect(matchesReplayFilter("failed", line(entry(1), { kind: "tool", status: "error" }), {})).toBe(false);
-    expect(matchesReplayFilter("toolError", line(entry(1), { kind: "tool", status: "error" }), {})).toBe(true);
+    expect(
+      matchesReplayFilter("failed", line(entry(1), { kind: "tool", status: "error" }), {}),
+    ).toBe(false);
+    expect(
+      matchesReplayFilter("toolError", line(entry(1), { kind: "tool", status: "error" }), {}),
+    ).toBe(true);
     expect(matchesReplayFilter("toolError", line(failed, { kind: "failed" }), {})).toBe(false);
     expect(matchesReplayFilter("prompt", line(entry(1), {}), {})).toBe(true);
   });

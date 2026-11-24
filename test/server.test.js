@@ -23,7 +23,12 @@ function anthropicResp({ input_tokens = 0, output_tokens = 0, cache_read_input_t
 
 function record(store, model, usage) {
   const rec = store.add({
-    request: { method: "POST", url: "/v1/messages", headers: {}, body: { model, messages: [], tools: [] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { model, messages: [], tools: [] },
+    },
   });
   rec.response = { status: 200, raw: anthropicResp(usage) };
   store.update(rec);
@@ -33,17 +38,22 @@ async function withServer(roots, fn, store = null) {
   const server = createServer({ roots, store });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
-  try { await fn(port); }
-  finally { await new Promise((resolve) => server.close(resolve)); }
+  try {
+    await fn(port);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 function get(port, p) {
   return new Promise((resolve, reject) => {
-    http.get({ host: "127.0.0.1", port, path: p }, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
-    }).on("error", reject);
+    http
+      .get({ host: "127.0.0.1", port, path: p }, (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
+      })
+      .on("error", reject);
   });
 }
 
@@ -52,17 +62,26 @@ test("session export downloads all full records from live and saved sessions wit
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const store = new Store({ root });
   const body = {
-    model: "claude-sonnet-4-6", system: "exported system",
+    model: "claude-sonnet-4-6",
+    system: "exported system",
     tools: [{ name: "lookup", input_schema: { type: "object" } }],
     messages: [{ role: "user", content: "full exported message" }],
   };
-  const completed = store.add({ request: {
-    method: "POST", url: "/v1/messages", headers: { authorization: "secret", "x-api-key": "short" }, body,
-  } });
+  const completed = store.add({
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: { authorization: "secret", "x-api-key": "short" },
+      body,
+    },
+  });
   completed.startedAt = completed.ts;
   completed.response = {
-    status: 200, headers: { "content-type": "text/event-stream" },
-    raw: 'data: {"type":"message_stop"}\n\n', firstByteAt: completed.ts + 10, finishedAt: completed.ts + 20,
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+    raw: 'data: {"type":"message_stop"}\n\n',
+    firstByteAt: completed.ts + 10,
+    finishedAt: completed.ts + 20,
   };
   store.update(completed);
   const pending = store.add({ request: { method: "POST", url: "/raw", body: "not JSON" } });
@@ -73,13 +92,19 @@ test("session export downloads all full records from live and saved sessions wit
   const verify = async (port) => {
     const res = await get(port, `/api/sessions/export?session=${session}&model=nonexistent`);
     assert.equal(res.status, 200);
-    assert.equal(res.headers["content-disposition"], `attachment; filename="ccglass-session-${session}.json"`);
+    assert.equal(
+      res.headers["content-disposition"],
+      `attachment; filename="ccglass-session-${session}.json"`,
+    );
     assert.match(res.headers["content-type"], /^application\/json/);
     assert.equal(res.headers["cache-control"], "no-store");
     const exported = JSON.parse(res.body);
     assert.equal(exported.session, session);
     assert.ok(Number.isFinite(Date.parse(exported.exportedAt)));
-    assert.deepEqual(exported.entries.map((rec) => rec.id), [completed.id, pending.id, failed.id]);
+    assert.deepEqual(
+      exported.entries.map((rec) => rec.id),
+      [completed.id, pending.id, failed.id],
+    );
     assert.deepEqual(exported.entries[0].request.body, body);
     assert.equal(exported.entries[0].request.headers.authorization, "[REDACTED]");
     assert.equal(exported.entries[0].request.headers["x-api-key"], "[REDACTED]");
@@ -101,27 +126,42 @@ test("session export supports empty recordings and rejects missing or unknown se
   const root = mkRoot("export-empty");
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const store = new Store({ root });
-  await withServer([root], async (port) => {
-    const empty = await get(port, `/api/sessions/export?session=${store.sessionId}`);
-    assert.equal(empty.status, 200);
-    assert.deepEqual(JSON.parse(empty.body).entries, []);
-    for (const [query, status] of [["", 400], ["?session=unknown", 404], ["?session=..%2F", 404]]) {
-      const res = await get(port, "/api/sessions/export" + query);
-      assert.equal(res.status, status);
-      assert.equal(res.headers["content-disposition"], undefined);
-      assert.ok(JSON.parse(res.body).error);
-    }
-    const response = await fetch(`http://127.0.0.1:${port}/api/sessions/export?session=${store.sessionId}`, { method: "POST" });
-    assert.equal(response.status, 405);
-    assert.equal(response.headers.get("allow"), "GET");
-    await response.text();
-  }, store);
+  await withServer(
+    [root],
+    async (port) => {
+      const empty = await get(port, `/api/sessions/export?session=${store.sessionId}`);
+      assert.equal(empty.status, 200);
+      assert.deepEqual(JSON.parse(empty.body).entries, []);
+      for (const [query, status] of [
+        ["", 400],
+        ["?session=unknown", 404],
+        ["?session=..%2F", 404],
+      ]) {
+        const res = await get(port, "/api/sessions/export" + query);
+        assert.equal(res.status, status);
+        assert.equal(res.headers["content-disposition"], undefined);
+        assert.ok(JSON.parse(res.body).error);
+      }
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/sessions/export?session=${store.sessionId}`,
+        { method: "POST" },
+      );
+      assert.equal(response.status, 405);
+      assert.equal(response.headers.get("allow"), "GET");
+      await response.text();
+    },
+    store,
+  );
 });
 
 test("GET /api/usage returns the aggregator payload", async () => {
   const root = mkRoot("usage-route");
   const store = new Store({ root, format: "anthropic" });
-  record(store, "claude-opus-4-7", { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 200 });
+  record(store, "claude-opus-4-7", {
+    input_tokens: 100,
+    output_tokens: 50,
+    cache_read_input_tokens: 200,
+  });
   record(store, "claude-sonnet-4-6", { input_tokens: 40, output_tokens: 10 });
 
   await withServer([root], async (port) => {
@@ -140,7 +180,9 @@ test("GET /api/usage returns the aggregator payload", async () => {
     assert.equal("usd" in u.bySession[0], false);
 
     const requests = JSON.parse((await get(port, `/api/requests?session=${store.sessionId}`)).body);
-    const detail = JSON.parse((await get(port, `/api/request/${encodeURIComponent(requests.entries[0].id)}`)).body);
+    const detail = JSON.parse(
+      (await get(port, `/api/request/${encodeURIComponent(requests.entries[0].id)}`)).body,
+    );
     assert.equal("cost" in detail.parsed, false);
     assert.equal(detail.parsed.usageStats.cacheRead, 200);
     assert.equal(detail.parsed.usageStats.totalInput, 300);

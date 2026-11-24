@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, BarChart3, Download, Layers3 } from "lucide-react";
 import { api } from "../api";
 import type { UsageSession, UsageSummary } from "../types";
-import { fmt, fmtCompact, fmtDateTime, pct, plural, sessionLabel, sessionStart } from "../lib/format";
+import {
+  fmt,
+  fmtCompact,
+  fmtDateTime,
+  pct,
+  plural,
+  sessionLabel,
+  sessionStart,
+} from "../lib/format";
 import { routeLink, type Navigate, type Route } from "../lib/route";
 import { modelsLabel, type SessionIdentity } from "../lib/session";
 import { SessionMenu } from "./SessionActions";
@@ -40,13 +48,15 @@ const SORTS: Record<SortKey, (row: Row) => number> = {
   requests: (row) => row.requests ?? -1,
   input: (row) => (row.usage ? totalInput(row.usage) : -1),
   cached: (row) => row.usage?.cacheRead ?? -1,
-  share: (row) => (row.usage && totalInput(row.usage) ? row.usage.cacheRead / totalInput(row.usage) : -1),
+  share: (row) =>
+    row.usage && totalInput(row.usage) ? row.usage.cacheRead / totalInput(row.usage) : -1,
   output: (row) => row.usage?.output ?? -1,
 };
 const COLUMNS: [SortKey, string][] = [
   ["requests", "Requests"],
   ...TOKEN_COLUMNS.map(
-    (name, index) => [(["input", "cached", "share", "output"] as const)[index], name] as [SortKey, string],
+    (name, index) =>
+      [(["input", "cached", "share", "output"] as const)[index], name] as [SortKey, string],
   ),
 ];
 
@@ -137,7 +147,8 @@ function SessionTable({
                 // The whole row opens the session; the link inside is what a
                 // keyboard and a screen reader use.
                 onClick={(event) => {
-                  if (!(event.target as Element).closest("a, button, [role='menu']")) link.onClick(event);
+                  if (!(event.target as Element).closest("a, button, [role='menu']"))
+                    link.onClick(event);
                 }}
               >
                 <td>
@@ -148,7 +159,8 @@ function SessionTable({
                       {recording && <span className="badge badge-recording">Recording</span>}
                     </span>{" "}
                     <span className="session-cell-about">
-                      {about || (empty ? "No requests" : identity ? "No prompt in the first request" : " ")}
+                      {about ||
+                        (empty ? "No requests" : identity ? "No prompt in the first request" : " ")}
                     </span>
                   </a>
                 </td>

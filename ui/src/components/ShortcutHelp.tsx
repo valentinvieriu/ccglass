@@ -24,7 +24,13 @@ const MARKS: [string, string][] = [
  * Everything the screen no longer spells out inline: the keys that work in
  * every list, and how to read the request strip.
  */
-export function ShortcutHelp({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+export function ShortcutHelp({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: (open: boolean) => void;
+}) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;

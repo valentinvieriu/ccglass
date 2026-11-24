@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 
 const stylesheet = readFileSync("ui/src/styles.css", "utf8");
 const darkBlock = stylesheet.match(/:root\[data-theme="dark"\]\s*\{[^}]*\}/)![0];
@@ -68,7 +68,9 @@ describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (t
       ["tool", "tool-soft"],
       // The assistant's tile: the surface colour on ink.
       ["surface", "ink"],
-      ...["surface-subtle"].flatMap((surface) => ["ink", "muted", "subtle"].map((text) => [text, surface])),
+      ...["surface-subtle"].flatMap((surface) =>
+        ["ink", "muted", "subtle"].map((text) => [text, surface]),
+      ),
       ...["json-key", "json-string", "json-number", "json-boolean"].map((text) => [
         text,
         "surface-muted",
@@ -95,7 +97,13 @@ describe.each(["light", "dark"] as const)("accessible semantic palette (%s)", (t
   it("marks a selected row with a bar that stands out from the row and from its neighbours", () => {
     // The accent bar on the leading edge is what says "selected": 3:1 against
     // the row's own soft fill and against the surfaces a row sits on.
-    for (const surface of ["accent-soft", "accent-soft-hover", "surface", "surface-subtle", "surface-muted"])
+    for (const surface of [
+      "accent-soft",
+      "accent-soft-hover",
+      "surface",
+      "surface-subtle",
+      "surface-muted",
+    ])
       expect(contrast("accent", surface), `selection bar on ${surface}`).toBeGreaterThanOrEqual(3);
   });
 

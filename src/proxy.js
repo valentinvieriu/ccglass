@@ -5,10 +5,19 @@
 import http from "node:http";
 import https from "node:https";
 
-export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS_CORS_ORIGINS || "" }) {
+export function createProxy({
+  upstream,
+  store,
+  corsOrigins = process.env.CCGLASS_CORS_ORIGINS || "",
+}) {
   const up = new URL(upstream);
   const client = up.protocol === "http:" ? http : https;
-  const allowedOrigins = new Set(corsOrigins.split(",").map((origin) => origin.trim()).filter(Boolean));
+  const allowedOrigins = new Set(
+    corsOrigins
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  );
   const corsEnabled = allowedOrigins.size > 0;
 
   return http.createServer((req, res) => {
@@ -26,10 +35,19 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
         res.setHeader("access-control-allow-origin", corsOrigin);
         if (req.method === "OPTIONS" && req.headers["access-control-request-method"]) {
           req.resume();
-          res.setHeader("vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
-          res.setHeader("access-control-allow-methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS");
+          res.setHeader(
+            "vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          );
+          res.setHeader(
+            "access-control-allow-methods",
+            "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
+          );
           if (req.headers["access-control-request-headers"]) {
-            res.setHeader("access-control-allow-headers", req.headers["access-control-request-headers"]);
+            res.setHeader(
+              "access-control-allow-headers",
+              req.headers["access-control-request-headers"],
+            );
           }
           res.setHeader("access-control-max-age", "600");
           res.writeHead(204);
@@ -99,10 +117,15 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
           proxyRes.on("error", fail);
           const responseHeaders = { ...proxyRes.headers };
           if (corsEnabled) {
-            responseHeaders.vary = [...new Set([
-              ...(proxyRes.headers.vary || "").split(",").map((value) => value.trim()).filter(Boolean),
-              "Origin",
-            ])].join(", ");
+            responseHeaders.vary = [
+              ...new Set([
+                ...(proxyRes.headers.vary || "")
+                  .split(",")
+                  .map((value) => value.trim())
+                  .filter(Boolean),
+                "Origin",
+              ]),
+            ].join(", ");
             if (origin) responseHeaders["access-control-allow-origin"] = corsOrigin;
           }
           res.writeHead(proxyRes.statusCode, responseHeaders);
@@ -131,7 +154,7 @@ export function createProxy({ upstream, store, corsOrigins = process.env.CCGLASS
             };
             store.update(rec);
           });
-        }
+        },
       );
 
       proxyReq.on("error", fail);

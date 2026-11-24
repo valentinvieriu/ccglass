@@ -6,7 +6,13 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { summarize, listSessions, listSessionsMulti, loadSessionMulti, readEntryByIdMulti } from "./store.js";
+import {
+  summarize,
+  listSessions,
+  listSessionsMulti,
+  loadSessionMulti,
+  readEntryByIdMulti,
+} from "./store.js";
 import { getAdapter, detectFormat } from "./formats/index.js";
 import { aggregateSessionStats, latencyMs, requestTiming, sessionModels } from "./session-stats.js";
 import { diffBlockLists } from "./diff.js";
@@ -16,7 +22,12 @@ import { summarizeUsage } from "./usage.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, "..", "web");
 
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+};
 
 // `store` is present in live (`ccglass claude`) mode; otherwise we read from disk.
 export function createServer({ roots, store }) {
@@ -49,7 +60,14 @@ export function createServer({ roots, store }) {
     const p = url.pathname;
 
     try {
-      if (["/api/sessions/start", "/api/sessions/stop", "/api/sessions/reset", "/api/sessions/delete"].includes(p)) {
+      if (
+        [
+          "/api/sessions/start",
+          "/api/sessions/stop",
+          "/api/sessions/reset",
+          "/api/sessions/delete",
+        ].includes(p)
+      ) {
         if (req.method !== "POST") {
           res.setHeader("allow", "POST");
           return json(res, { error: "POST required" }, 405);
@@ -57,12 +75,15 @@ export function createServer({ roots, store }) {
         if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) {
           return json(res, { error: "same-origin request required" }, 403);
         }
-        if (!store) return json(res, { error: "capture controls unavailable in read-only mode" }, 409);
+        if (!store)
+          return json(res, { error: "capture controls unavailable in read-only mode" }, 409);
         if (p.endsWith("/reset") || p.endsWith("/delete")) {
           const session = url.searchParams.get("session");
-          if (!listSessions(store.root).includes(session)) return json(res, { error: "session not found" }, 404);
+          if (!listSessions(store.root).includes(session))
+            return json(res, { error: "session not found" }, 404);
           if (p.endsWith("/delete")) {
-            if (store.recording && session === store.sessionId) return json(res, { error: "Stop this session before deleting it" }, 409);
+            if (store.recording && session === store.sessionId)
+              return json(res, { error: "Stop this session before deleting it" }, 409);
             store.deleteSession(session);
           } else store.reset(session);
         } else if (p.endsWith("/start")) store.start();
@@ -79,8 +100,13 @@ export function createServer({ roots, store }) {
       }
       if (p === "/api/requests") return json(res, apiRequests(roots, store, url));
       if (p === "/api/session-stats") return json(res, apiSessionStats(roots, store, url));
-      if (p === "/api/usage") return json(res, summarizeUsage(roots, { names: url.searchParams.get("names") === "1" }));
-      if (p.startsWith("/api/request/")) return json(res, apiRequest(roots, store, decodeURIComponent(p.slice("/api/request/".length))));
+      if (p === "/api/usage")
+        return json(res, summarizeUsage(roots, { names: url.searchParams.get("names") === "1" }));
+      if (p.startsWith("/api/request/"))
+        return json(
+          res,
+          apiRequest(roots, store, decodeURIComponent(p.slice("/api/request/".length))),
+        );
       if (p === "/api/diff") return json(res, apiDiff(roots, store, url));
       if (p === "/api/export") return apiExport(roots, store, url, res);
       if (p === "/api/stream") return stream(res, sseClients, apiSessions(roots, store));
@@ -102,7 +128,11 @@ function getEntry(roots, store, id) {
 }
 
 function apiSessions(roots, store) {
-  return { sessions: listSessionsMulti(roots), live: store?.recording ? store.sessionId : null, controllable: !!store };
+  return {
+    sessions: listSessionsMulti(roots),
+    live: store?.recording ? store.sessionId : null,
+    controllable: !!store,
+  };
 }
 
 function sessionRecords(roots, store, session) {
@@ -175,12 +205,17 @@ function apiExport(roots, store, url, res) {
 function apiSessionExport(roots, store, url, res) {
   const session = url.searchParams.get("session");
   if (!session) return json(res, { error: "session required" }, 400);
-  if (!listSessionsMulti(roots).includes(session)) return json(res, { error: "session not found" }, 404);
-  const body = JSON.stringify({
-    session,
-    exportedAt: new Date().toISOString(),
-    entries: sessionRecords(roots, store, session),
-  }, null, 2);
+  if (!listSessionsMulti(roots).includes(session))
+    return json(res, { error: "session not found" }, 404);
+  const body = JSON.stringify(
+    {
+      session,
+      exportedAt: new Date().toISOString(),
+      entries: sessionRecords(roots, store, session),
+    },
+    null,
+    2,
+  );
   res.writeHead(200, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
@@ -197,7 +232,11 @@ function json(res, obj, code = 200) {
 }
 
 function stream(res, clients, sessions) {
-  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+  res.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
   res.write(": connected\n\n");
   res.write(`event: sessions\ndata: ${JSON.stringify(sessions)}\n\n`);
   clients.add(res);
@@ -216,5 +255,7 @@ function serveStatic(p, res) {
 }
 
 function attach(id, ext) {
-  return { "content-disposition": `attachment; filename="ccglass-${id.replace(/\//g, "_")}.${ext}"` };
+  return {
+    "content-disposition": `attachment; filename="ccglass-${id.replace(/\//g, "_")}.${ext}"`,
+  };
 }

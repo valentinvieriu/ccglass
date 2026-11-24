@@ -10,7 +10,12 @@ const key = (b) => createHash("sha1").update(`${b.kind} ${b.text}`).digest("hex"
 export function requestBlocks(body = {}) {
   const out = [];
   (body.system || []).forEach((b, i) => {
-    out.push({ kind: "system", label: `system[${i}]`, text: b.text || "", cache: !!b.cache_control });
+    out.push({
+      kind: "system",
+      label: `system[${i}]`,
+      text: b.text || "",
+      cache: !!b.cache_control,
+    });
   });
   (body.messages || []).forEach((m, mi) => {
     const content = Array.isArray(m.content) ? m.content : [{ type: "text", text: m.content }];

@@ -31,9 +31,7 @@ function withExit(fn) {
 }
 
 test("exportEntry errors when id is missing", () => {
-  const { code, stderr } = withExit(() =>
-    exportEntry(null, { readRoots: [], dir: "/tmp" }),
-  );
+  const { code, stderr } = withExit(() => exportEntry(null, { readRoots: [], dir: "/tmp" }));
   assert.equal(code, 1);
   assert.match(stderr, /missing entry id/i);
 });

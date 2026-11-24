@@ -47,7 +47,13 @@ function usageFor(rec) {
   const adapter = getAdapter(detectFormat(rec));
   const resp = rec.response?.raw ? adapter.reassemble(rec.response.raw) : rec.response || {};
   const usage = resp?.usage;
-  if (!usage || (!usage.input_tokens && !usage.output_tokens && !usage.prompt_tokens && !usage.completion_tokens)) {
+  if (
+    !usage ||
+    (!usage.input_tokens &&
+      !usage.output_tokens &&
+      !usage.prompt_tokens &&
+      !usage.completion_tokens)
+  ) {
     return null;
   }
   const model = resp?.model || rec.request?.body?.model || "unknown";
@@ -88,7 +94,10 @@ export function summarizeUsage(roots, { names = false } = {}) {
         if (to == null || rec.ts > to) to = rec.ts;
       }
       const res = usageFor(rec);
-      if (!res) { unmeasured += 1; continue; }
+      if (!res) {
+        unmeasured += 1;
+        continue;
+      }
       const { stats, model } = res;
 
       addInto(totals, stats);

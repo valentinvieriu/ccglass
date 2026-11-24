@@ -12,13 +12,18 @@ const bin = path.join(__dirname, "..", "bin", "ccglass.js");
 
 function run(args, env = {}, cwd) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [bin, ...args], {
-      env: { ...process.env, ...env },
-      cwd,
-      timeout: 5000,
-    }, (err, stdout, stderr) => {
-      resolve({ code: err?.code ?? 0, stdout, stderr });
-    });
+    execFile(
+      process.execPath,
+      [bin, ...args],
+      {
+        env: { ...process.env, ...env },
+        cwd,
+        timeout: 5000,
+      },
+      (err, stdout, stderr) => {
+        resolve({ code: err?.code ?? 0, stdout, stderr });
+      },
+    );
   });
 }
 
@@ -101,10 +106,7 @@ test("proxy subcommand does not spawn a client (no 'command not found')", async 
   // try to spawn a client. run() does `{ ...process.env, ...env }`, so use an
   // empty-string override to actually clear OPENAI_BASE_URL for the child
   // (same trick the bedrock test uses).
-  const { code, stderr } = await run(
-    ["proxy", "--provider", "glm"],
-    { OPENAI_BASE_URL: "" }
-  );
+  const { code, stderr } = await run(["proxy", "--provider", "glm"], { OPENAI_BASE_URL: "" });
 
   assert.equal(code, 1);
   assert.match(stderr, /upstream URL/);
@@ -118,10 +120,15 @@ test("usage output retains tokens and session rows without billing", async () =>
   try {
     const store = new Store({ root, format: "anthropic" });
     const rec = store.add({ request: { body: { model: "test-model", messages: [] } } });
-    rec.response = { status: 200, raw: JSON.stringify({
-      type: "message", role: "assistant", content: [],
-      usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 900 },
-    }) };
+    rec.response = {
+      status: 200,
+      raw: JSON.stringify({
+        type: "message",
+        role: "assistant",
+        content: [],
+        usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 900 },
+      }),
+    };
     store.update(rec);
     const text = await run(["usage", "--by-timestamp", "--dir", root], {}, root);
     assert.equal(text.code, 0);
@@ -146,12 +153,26 @@ test("ccglass rm deletes a session directory", async () => {
   const session = "2020-01-01T00-00-00-000Z";
   const dir = path.join(root, session);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "0001.json"), JSON.stringify({
-    v: 2, id: `${session}/0001`, session, seq: 1, ts: 1, format: "anthropic",
-    request: { headers: {}, meta: { model: "m" }, historyKey: "messages",
-               system: null, tools: null, messages: [] },
-    response: null,
-  }));
+  fs.writeFileSync(
+    path.join(dir, "0001.json"),
+    JSON.stringify({
+      v: 2,
+      id: `${session}/0001`,
+      session,
+      seq: 1,
+      ts: 1,
+      format: "anthropic",
+      request: {
+        headers: {},
+        meta: { model: "m" },
+        historyKey: "messages",
+        system: null,
+        tools: null,
+        messages: [],
+      },
+      response: null,
+    }),
+  );
 
   const { code } = await run(["rm", session, "--dir", root]);
   assert.equal(code, 0);
@@ -164,13 +185,22 @@ test("ccglass repack migrates a legacy v1 capture to v2", async () => {
   const dir = path.join(root, session);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "0001.json");
-  fs.writeFileSync(file, JSON.stringify({
-    id: `${session}/0001`, session, seq: 1, ts: 1, format: "anthropic",
-    request: { headers: {}, body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] } },
-    response: { status: 200 },
-  }));
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      id: `${session}/0001`,
+      session,
+      seq: 1,
+      ts: 1,
+      format: "anthropic",
+      request: {
+        headers: {},
+        body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] },
+      },
+      response: { status: 200 },
+    }),
+  );
   const { code } = await run(["repack", "--dir", root]);
   assert.equal(code, 0);
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).v, 2);
 });
-

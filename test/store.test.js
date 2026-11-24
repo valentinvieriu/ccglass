@@ -70,7 +70,10 @@ test("Reset clears only the selected session, collects orphaned blobs and ignore
   const third = store.add({ request: { body: "fresh" } });
   second.response = { status: 200, raw: "also late" };
   store.update(second);
-  assert.deepEqual(loadSession(root, second.session).map((r) => r.id), [third.id]);
+  assert.deepEqual(
+    loadSession(root, second.session).map((r) => r.id),
+    [third.id],
+  );
   assert.notEqual(second.id, third.id);
   store.stop();
   store.reset(third.session);
@@ -422,7 +425,8 @@ test("Store writes a v2 manifest with blob refs; in-memory rec stays full", () =
   const store = new Store({ root });
   const rec = store.add({
     request: {
-      method: "POST", url: "/v1/messages",
+      method: "POST",
+      url: "/v1/messages",
       headers: { authorization: "Bearer sk-ant-oat01-SECRETSECRETSECRET-TAIL" },
       body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] },
     },
@@ -447,9 +451,15 @@ test("v2 manifests are reconstructed transparently by loadSession/readEntryById"
   const store = new Store({ root });
   const rec = store.add({
     request: {
-      method: "POST", url: "/v1/messages", headers: {},
-      body: { model: "m", system: [{ type: "text", text: "s" }],
-              messages: [{ role: "user", content: "hi" }], tools: [{ name: "t" }] },
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: {
+        model: "m",
+        system: [{ type: "text", text: "s" }],
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ name: "t" }],
+      },
     },
   });
   rec.response = { status: 200, raw: "ok" };
@@ -470,9 +480,16 @@ test("v2 manifests are reconstructed transparently by loadSession/readEntryById"
 test("listSessions ignores the blobs directory", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccglass-ls-"));
   const store = new Store({ root });
-  const rec = store.add({ request: { method: "POST", url: "/x", headers: {},
-    body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] } } });
-  rec.response = { status: 200 }; store.update(rec);
+  const rec = store.add({
+    request: {
+      method: "POST",
+      url: "/x",
+      headers: {},
+      body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] },
+    },
+  });
+  rec.response = { status: 200 };
+  store.update(rec);
   const sessions = listSessions(root); // listSessions must already be imported at top of file
   assert.deepEqual(sessions, [store.sessionId]); // NOT ["blobs", ...]
 });
@@ -483,8 +500,15 @@ test("legacy NNNN.json is repacked to v2 in place on read, idempotently", () => 
   const dir = path.join(root, session);
   fs.mkdirSync(dir, { recursive: true });
   const legacy = {
-    id: `${session}/0001`, session, seq: 1, ts: 1, format: "anthropic",
-    request: { headers: {}, body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] } },
+    id: `${session}/0001`,
+    session,
+    seq: 1,
+    ts: 1,
+    format: "anthropic",
+    request: {
+      headers: {},
+      body: { model: "m", messages: [{ role: "user", content: "hi" }], tools: [] },
+    },
     response: { status: 200, raw: "ok" },
   };
   const file = path.join(dir, "0001.json");
@@ -506,11 +530,26 @@ test("a corrupt v2 manifest yields null, not a thrown error", () => {
   const dir = path.join(root, session);
   fs.mkdirSync(dir, { recursive: true });
   // historyKey set but messages is a non-array → (messages||[]).map throws inside unpackRecord
-  fs.writeFileSync(path.join(dir, "0001.json"), JSON.stringify({
-    v: 2, id: `${session}/0001`, session, seq: 1, ts: 1, format: "anthropic",
-    request: { headers: {}, meta: { model: "m" }, historyKey: "messages", system: null, tools: null, messages: "not-an-array" },
-    response: null,
-  }));
+  fs.writeFileSync(
+    path.join(dir, "0001.json"),
+    JSON.stringify({
+      v: 2,
+      id: `${session}/0001`,
+      session,
+      seq: 1,
+      ts: 1,
+      format: "anthropic",
+      request: {
+        headers: {},
+        meta: { model: "m" },
+        historyKey: "messages",
+        system: null,
+        tools: null,
+        messages: "not-an-array",
+      },
+      response: null,
+    }),
+  );
   const loaded = loadSession(root, session); // (use whatever name loadSession is imported as)
   assert.equal(loaded.length, 0); // corrupt entry is dropped (readRecordFile returned null), not thrown
 });
@@ -535,8 +574,12 @@ test("growing-prefix sessions store O(N) blobs, not O(N^2)", () => {
     messages.push({ role: "user", content: `turn ${i}` });
     messages.push({ role: "assistant", content: `reply ${i}` });
     const rec = store.add({
-      request: { method: "POST", url: "/v1/messages", headers: {},
-        body: { model: "m", tools, messages: messages.map((m) => ({ ...m })) } },
+      request: {
+        method: "POST",
+        url: "/v1/messages",
+        headers: {},
+        body: { model: "m", tools, messages: messages.map((m) => ({ ...m })) },
+      },
     });
     rec.response = { status: 200, raw: "ok" };
     store.update(rec);

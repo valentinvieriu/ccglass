@@ -35,7 +35,10 @@ class MockStore extends EventEmitter {
 test("forward-proxy tunnels non-target hosts transparently", async () => {
   // Create a simple TCP echo server to act as "upstream"
   const echo = net.createServer((sock) => {
-    sock.on("data", (d) => { sock.write(d); sock.end(); });
+    sock.on("data", (d) => {
+      sock.write(d);
+      sock.end();
+    });
   });
   await new Promise((r) => echo.listen(0, "127.0.0.1", r));
   const echoPort = echo.address().port;

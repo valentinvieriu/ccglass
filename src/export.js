@@ -86,7 +86,8 @@ export function toMarkdown(rec) {
     out.push("\n## Response\n");
     out.push(`- stop_reason: ${r?.stop_reason}`);
     out.push("```json\n" + JSON.stringify(r?.usage || {}, null, 2) + "\n```");
-    for (const b of r?.content || []) out.push("```text\n" + (b.text ?? JSON.stringify(b)) + "\n```\n");
+    for (const b of r?.content || [])
+      out.push("```text\n" + (b.text ?? JSON.stringify(b)) + "\n```\n");
   }
   return out.join("\n");
 }
@@ -102,7 +103,10 @@ export function toHar(rec) {
           request: {
             method: rec.request?.method,
             url: rec.request?.url,
-            headers: Object.entries(rec.request?.headers || {}).map(([name, value]) => ({ name, value: String(value) })),
+            headers: Object.entries(rec.request?.headers || {}).map(([name, value]) => ({
+              name,
+              value: String(value),
+            })),
             postData: { mimeType: "application/json", text: requestBody(rec) },
           },
           response: {
@@ -123,7 +127,11 @@ export function renderExport(rec, format = "md") {
     case "json":
       return { contentType: "application/json", ext: "json", body: JSON.stringify(rec, null, 2) };
     case "har":
-      return { contentType: "application/json", ext: "har.json", body: JSON.stringify(toHar(rec), null, 2) };
+      return {
+        contentType: "application/json",
+        ext: "har.json",
+        body: JSON.stringify(toHar(rec), null, 2),
+      };
     case "md":
     default:
       return { contentType: "text/markdown; charset=utf-8", ext: "md", body: toMarkdown(rec) };

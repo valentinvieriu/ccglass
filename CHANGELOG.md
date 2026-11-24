@@ -8,11 +8,14 @@ up to and including 1.1.2 predate this file; see the git history for those.
 ## [Unreleased]
 
 ### Added
+
 - `ccglass usage --by-session` now labels each row with the agent's own session name (Claude Code's `/rename` title, else its auto-generated title, else the first prompt), recovered from the Claude Code transcript linked via each request's `metadata.user_id`. The raw timestamp id column is kept alongside so sessions sharing a title stay distinguishable.
 - `ccglass usage --by-timestamp` lists sessions by their raw capture-timestamp id (the id `ccglass rm`/`export` take), without resolving names.
 - The web dashboard's Summary → "by session" table now shows the resolved session name alongside the timestamp id, matching `ccglass usage --by-session`. A new "by timestamp" sub-tab lists sessions by their raw capture-timestamp id only, matching `ccglass usage --by-timestamp`.
 
 ### Changed
+
+- Development tooling moved to [Vite+](https://viteplus.dev) 1.5.1 (`vp`): Vite 8, Vitest 5, Oxlint and Oxfmt, configured in `vite.config.ts` (`vitest.config.ts` is gone). New `check`, `lint` and `fmt` scripts; the codebase is formatted with Oxfmt; a pre-commit hook runs `vp check --fix` on staged files. The published CLI is unaffected.
 - Dashboard numbers use one vocabulary: **Input (total)** is everything sent to the model, **of which cached** is the part read from cache, and **Output**. The session band, the Summary and a request's Overview previously showed different quantities under the same "Input" label. A rate is shown as "—" when nothing was measured, instead of 0%.
 - Sizes in the dashboard are shown in tokens (an estimate marked "~" where no measured count exists), with the character count on hover. Times use one format: the 24-hour clock, a short date outside today, and the time since the session's first request (`+0:57`) in the request list.
 - A request shows its outcome on every tab (`HTTP 200 · 2.25s, first token 1.27s · 47,247 tokens in (98% cached) · 102 tokens out`). A failed request opens on its Response tab and says what happened (`Failed after 8.85s · client disconnected`) instead of reporting zero tokens and a first-token time.
@@ -44,4 +47,5 @@ up to and including 1.1.2 predate this file; see the git history for those.
 - Session-name resolution is opt-in and lazy: the CLI's `--by-session` enables it, and the web dashboard requests names (`/api/usage?names=1`) only for its by-session tab — the by-model and by-timestamp tabs, default `usage`, and the MCP session tools never scan `~/.claude/projects`. A short-lived shared cache keeps the dashboard's live-session reloads from re-scanning on every refresh.
 
 ### Removed
+
 - Removed the old dashboard demo, screenshots and superseded design notes (UI modernization proposal, storage plan, Bedrock bug report, cost bucketing) from the project documentation.

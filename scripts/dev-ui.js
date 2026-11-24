@@ -7,7 +7,7 @@ const portIndex = args.indexOf("--port");
 const dashboardPort = portIndex >= 0 ? args[portIndex + 1] : process.env.CCGLASS_DASHBOARD_PORT;
 const children = [
   spawn(process.execPath, ["--watch", "scripts/dev.js", ...args], { cwd: root, stdio: "inherit" }),
-  spawn(process.execPath, ["node_modules/vite/bin/vite.js"], {
+  spawn(process.execPath, ["node_modules/vite-plus/bin/vp", "dev"], {
     cwd: root,
     stdio: "inherit",
     env: { ...process.env, ...(dashboardPort ? { CCGLASS_DASHBOARD_PORT: dashboardPort } : {}) },

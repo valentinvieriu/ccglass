@@ -93,7 +93,9 @@
 
   --scrollbar-thumb: oklch(0.8 0.01 var(--neutral-hue));
   --color-shadow: oklch(0.22 0.02 var(--neutral-hue) / 0.1);
-  --shadow-card: 0 1px 2px oklch(0.22 0.02 var(--neutral-hue) / 0.06), 0 1px 1px oklch(0.22 0.02 var(--neutral-hue) / 0.04);
+  --shadow-card:
+    0 1px 2px oklch(0.22 0.02 var(--neutral-hue) / 0.06),
+    0 1px 1px oklch(0.22 0.02 var(--neutral-hue) / 0.04);
 }
 
 :root {
@@ -108,7 +110,11 @@
   color: var(--color-ink);
   /* Panels are opaque. The only wash is a faint one behind them. */
   background:
-    radial-gradient(70rem 40rem at 0% 0%, oklch(0.93 0.035 var(--brand-hue) / 0.55), transparent 70%),
+    radial-gradient(
+      70rem 40rem at 0% 0%,
+      oklch(0.93 0.035 var(--brand-hue) / 0.55),
+      transparent 70%
+    ),
     var(--color-canvas);
   /* The bundled face has no italic; a slanted one may be drawn for emphasis. */
   font-synthesis: style;
@@ -125,7 +131,9 @@
     oklch(var(--accent-l) 0.17 calc(var(--brand-hue) + 38))
   );
   --button-border: oklch(0.5 0.05 var(--neutral-hue) / 0.24);
-  --shadow-shell: 0 1px 2px oklch(0.3 0.04 var(--brand-hue) / 0.05), 0 10px 28px -18px oklch(0.3 0.06 var(--brand-hue) / 0.3);
+  --shadow-shell:
+    0 1px 2px oklch(0.3 0.04 var(--brand-hue) / 0.05),
+    0 10px 28px -18px oklch(0.3 0.06 var(--brand-hue) / 0.3);
   --search-mark: oklch(0.88 0.13 95);
   --search-mark-ink: oklch(0.25 0.04 95);
 }
@@ -289,7 +297,9 @@ svg {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-on-accent);
-  box-shadow: 0 1px 2px var(--color-shadow), inset 0 1px 0 oklch(1 0 0 / 0.18);
+  box-shadow:
+    0 1px 2px var(--color-shadow),
+    inset 0 1px 0 oklch(1 0 0 / 0.18);
 }
 .button-primary:hover:not(:disabled) {
   background: var(--color-accent-hover);
@@ -1529,10 +1539,18 @@ svg {
   flex-direction: column;
   gap: 12px;
 }
-.flow-view [data-section="system"] { --seg: var(--flow-seg-1); }
-.flow-view [data-section="tools"] { --seg: var(--flow-seg-2); }
-.flow-view [data-section="carried"] { --seg: var(--flow-seg-3); }
-.flow-view [data-section="new"] { --seg: var(--color-accent); }
+.flow-view [data-section="system"] {
+  --seg: var(--flow-seg-1);
+}
+.flow-view [data-section="tools"] {
+  --seg: var(--flow-seg-2);
+}
+.flow-view [data-section="carried"] {
+  --seg: var(--flow-seg-3);
+}
+.flow-view [data-section="new"] {
+  --seg: var(--color-accent);
+}
 .flow-weight {
   flex-shrink: 0;
   display: grid;
@@ -1651,12 +1669,25 @@ svg {
   background: var(--role, transparent);
   box-shadow: inset 0 0 0 1px var(--role-edge, transparent);
 }
-.flow-chip[data-role="user"] { --role: var(--color-accent); }
-.flow-chip[data-role="assistant"] { --role: var(--color-ink); }
-.flow-chip[data-role="tool"] { --role: var(--color-tool-soft); --role-edge: var(--color-tool); }
-.flow-chip[data-role="harness"] { --role-edge: var(--color-subtle); }
-.flow-chip[data-role="failed"] { --role: var(--color-danger); }
-.flow-chip[data-role="cancelled"] { --role: var(--color-warning); }
+.flow-chip[data-role="user"] {
+  --role: var(--color-accent);
+}
+.flow-chip[data-role="assistant"] {
+  --role: var(--color-ink);
+}
+.flow-chip[data-role="tool"] {
+  --role: var(--color-tool-soft);
+  --role-edge: var(--color-tool);
+}
+.flow-chip[data-role="harness"] {
+  --role-edge: var(--color-subtle);
+}
+.flow-chip[data-role="failed"] {
+  --role: var(--color-danger);
+}
+.flow-chip[data-role="cancelled"] {
+  --role: var(--color-warning);
+}
 .flow-tools {
   display: flex;
   align-items: center;
@@ -1745,9 +1776,15 @@ button.flow-zone-head:hover {
   border-radius: var(--radius-mark);
   background: var(--color-ink);
 }
-[data-zone="prefix"] .flow-zone-dot { background: var(--flow-seg-1); }
-[data-zone="carried"] .flow-zone-dot { background: var(--flow-seg-3); }
-[data-zone="new"] .flow-zone-dot { background: var(--color-accent); }
+[data-zone="prefix"] .flow-zone-dot {
+  background: var(--flow-seg-1);
+}
+[data-zone="carried"] .flow-zone-dot {
+  background: var(--flow-seg-3);
+}
+[data-zone="new"] .flow-zone-dot {
+  background: var(--color-accent);
+}
 .flow-zone-head strong {
   flex-shrink: 0;
   font-weight: var(--font-weight-strong);
@@ -2993,7 +3030,9 @@ button.flow-zone-head:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: 0 12px 32px var(--color-shadow), var(--shadow-card);
+  box-shadow:
+    0 12px 32px var(--color-shadow),
+    var(--shadow-card);
 }
 .menu-item {
   display: flex;
@@ -3050,7 +3089,9 @@ button.flow-zone-head:hover {
   border-radius: var(--radius-card);
   background: var(--color-surface);
   color: var(--color-ink);
-  box-shadow: 0 24px 60px var(--color-shadow), var(--shadow-card);
+  box-shadow:
+    0 24px 60px var(--color-shadow),
+    var(--shadow-card);
 }
 .dialog h2 {
   margin: 0 0 8px;
@@ -3198,7 +3239,9 @@ button.flow-zone-head:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: 0 12px 32px var(--color-shadow), var(--shadow-card);
+  box-shadow:
+    0 12px 32px var(--color-shadow),
+    var(--shadow-card);
   color: var(--color-ink);
   font-size: var(--text-meta);
 }

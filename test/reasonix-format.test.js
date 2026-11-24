@@ -28,7 +28,12 @@ test("reasonix.usageStats preserves fully cached input without billing fields", 
     prompt_cache_miss_tokens: 0,
   });
   assert.deepEqual(c, {
-    input: 0, output: 0, cacheWrite: 0, cacheRead: 1_000_000, totalInput: 1_000_000, cacheHitRate: 1,
+    input: 0,
+    output: 0,
+    cacheWrite: 0,
+    cacheRead: 1_000_000,
+    totalInput: 1_000_000,
+    cacheHitRate: 1,
   });
 });
 

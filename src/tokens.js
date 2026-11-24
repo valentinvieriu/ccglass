@@ -18,7 +18,8 @@ export function estimateRequestTokens(body) {
     const content = Array.isArray(m.content) ? m.content : [{ text: m.content }];
     for (const b of content) chars += b.text || JSON.stringify(b.input || "") || "";
   }
-  for (const t of body.tools || []) chars += (t.description || "") + JSON.stringify(t.input_schema || "");
+  for (const t of body.tools || [])
+    chars += (t.description || "") + JSON.stringify(t.input_schema || "");
   return estimateTokens(chars);
 }
 

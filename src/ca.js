@@ -23,7 +23,7 @@ export function ensureCA(dir) {
     execSync(
       `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${crtPath}" ` +
         `-days 825 -nodes -subj "/CN=ccglass CA" 2>/dev/null`,
-      { stdio: "pipe" }
+      { stdio: "pipe" },
     );
   }
 
@@ -60,12 +60,12 @@ export function signHost(host, ca) {
   execSync(
     `openssl req -newkey rsa:2048 -keyout "${keyFile}" -out "${csrFile}" ` +
       `-nodes -subj "/CN=${host}" 2>/dev/null`,
-    { stdio: "pipe" }
+    { stdio: "pipe" },
   );
   execSync(
     `openssl x509 -req -in "${csrFile}" -CA "${caCrtFile}" -CAkey "${caKeyFile}" ` +
       `-CAcreateserial -out "${crtFile}" -days 825 -extfile "${extFile}" 2>/dev/null`,
-    { stdio: "pipe" }
+    { stdio: "pipe" },
   );
 
   const result = {
@@ -75,9 +75,13 @@ export function signHost(host, ca) {
 
   // Cleanup temp files
   for (const f of [keyFile, csrFile, crtFile, extFile, caKeyFile, caCrtFile]) {
-    try { fs.unlinkSync(f); } catch {}
+    try {
+      fs.unlinkSync(f);
+    } catch {}
   }
-  try { fs.rmdirSync(tmpDir); } catch {}
+  try {
+    fs.rmdirSync(tmpDir);
+  } catch {}
 
   hostCache.set(host, result);
   return result;

@@ -100,7 +100,14 @@ function Body({
   const [open, setOpen] = useFold(false, reading, matches);
   const shown = long && !open;
   const preview = useMemo(
-    () => (shown ? text.split("\n", PREVIEW_LINES + 1).slice(0, PREVIEW_LINES).join("\n").slice(0, PREVIEW_CHARS) : ""),
+    () =>
+      shown
+        ? text
+            .split("\n", PREVIEW_LINES + 1)
+            .slice(0, PREVIEW_LINES)
+            .join("\n")
+            .slice(0, PREVIEW_CHARS)
+        : "",
     [shown, text],
   );
   const className = `msg-body ${mono ? "msg-mono" : "msg-prose"} ${quiet ? "msg-quiet" : ""} ${error ? "msg-error" : ""}`;
@@ -238,12 +245,20 @@ function Part({
               ) : (
                 onOpenTool &&
                 item.tool && (
-                  <button type="button" className="flow-link" onClick={() => onOpenTool(item.tool!)}>
+                  <button
+                    type="button"
+                    className="flow-link"
+                    onClick={() => onOpenTool(item.tool!)}
+                  >
                     Definition
                   </button>
                 )
               )}
-              <CopyButton text={item.text} label={`Copy input of ${item.name}`} displayLabel="Copy input" />
+              <CopyButton
+                text={item.text}
+                label={`Copy input of ${item.name}`}
+                displayLabel="Copy input"
+              />
             </div>
           </>
         )}
@@ -469,8 +484,7 @@ export default function MessagesView({
   const groupMatches = (value: FlowFilter, group: MessageGroup) =>
     group.parts.some((part) => matchesFilter(value, part.item));
   const visible = model.groups.filter(
-    (group) =>
-      groupMatches(filter, group) && group.parts.some((part) => partMatches(query, part)),
+    (group) => groupMatches(filter, group) && group.parts.some((part) => partMatches(query, part)),
   );
   const narrowed = filter !== "all" || query !== "";
   const dom = (target: string) => `${id}-${target}`;

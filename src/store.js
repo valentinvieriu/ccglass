@@ -14,13 +14,13 @@ const pad = (n) => String(n).padStart(4, "0");
 function localSessionId() {
   const d = new Date();
   const p = (n, w) => String(n).padStart(w, "0");
-  return `${d.getFullYear()}-${p(d.getMonth()+1,2)}-${p(d.getDate(),2)}T${p(d.getHours(),2)}-${p(d.getMinutes(),2)}-${p(d.getSeconds(),2)}-${p(d.getMilliseconds(),3)}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1, 2)}-${p(d.getDate(), 2)}T${p(d.getHours(), 2)}-${p(d.getMinutes(), 2)}-${p(d.getSeconds(), 2)}-${p(d.getMilliseconds(), 3)}`;
 }
 
 export function localTimestamp(ms) {
   const d = ms ? new Date(ms) : new Date();
   const p = (n, w) => String(n).padStart(w, "0");
-  return `${d.getFullYear()}-${p(d.getMonth()+1,2)}-${p(d.getDate(),2)}T${p(d.getHours(),2)}-${p(d.getMinutes(),2)}-${p(d.getSeconds(),2)}-${p(d.getMilliseconds(),3)}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1, 2)}-${p(d.getDate(), 2)}T${p(d.getHours(), 2)}-${p(d.getMinutes(), 2)}-${p(d.getSeconds(), 2)}-${p(d.getMilliseconds(), 3)}`;
 }
 
 export class Store extends EventEmitter {
@@ -42,7 +42,12 @@ export class Store extends EventEmitter {
     if (this.recording) return;
     const base = localSessionId();
     let session = base;
-    for (let n = 1; fs.existsSync(path.join(this.root, session)) || this.generations.has(session); n++) session = `${base}-${n}`;
+    for (
+      let n = 1;
+      fs.existsSync(path.join(this.root, session)) || this.generations.has(session);
+      n++
+    )
+      session = `${base}-${n}`;
     const dir = path.join(this.root, session);
     fs.mkdirSync(dir);
     this.sessionId = session;
@@ -73,7 +78,8 @@ export class Store extends EventEmitter {
 
   deleteSession(session) {
     if (!listSessions(this.root).includes(session)) throw new Error("session not found");
-    if (this.recording && session === this.sessionId) throw new Error("Stop this session before deleting it");
+    if (this.recording && session === this.sessionId)
+      throw new Error("Stop this session before deleting it");
     fs.rmSync(path.join(this.root, session), { recursive: true });
     this.generations.set(session, (this.generations.get(session) || 0) + 1);
     if (session === this.sessionId) {
@@ -277,7 +283,10 @@ export function loadSessionMulti(roots, session) {
   for (const root of roots) {
     const dir = path.join(root, session);
     if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json")).sort()) {
+    for (const f of fs
+      .readdirSync(dir)
+      .filter((x) => x.endsWith(".json"))
+      .sort()) {
       const file = path.join(dir, f);
       const seq = f.replace(/\.json$/, "");
       const id = `${session}/${seq}`;
@@ -339,7 +348,10 @@ export function loadSession(root, session) {
   const dir = path.join(root, session);
   if (!fs.existsSync(dir)) return [];
   const out = [];
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json")).sort()) {
+  for (const f of fs
+    .readdirSync(dir)
+    .filter((x) => x.endsWith(".json"))
+    .sort()) {
     const seq = f.replace(/\.json$/, "");
     const rec = readRecordFile(path.join(dir, f), `${session}/${seq}`, root);
     if (rec) out.push(rec);

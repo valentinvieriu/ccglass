@@ -194,7 +194,11 @@ export function buildTools(record: RequestRecord): ToolsModel {
     inputShare: section?.share ?? null,
     called: tools.filter((tool) => tool.calls.length).length,
     undefinedTools: [
-      ...new Set(calls.map((item) => item.tool).filter((name): name is string => !!name && !defined.has(name))),
+      ...new Set(
+        calls
+          .map((item) => item.tool)
+          .filter((name): name is string => !!name && !defined.has(name)),
+      ),
     ],
     settings: ["tool_choice", "parallel_tool_calls"]
       .filter((name) => body[name] !== undefined)

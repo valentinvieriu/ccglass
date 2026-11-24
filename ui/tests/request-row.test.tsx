@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { RequestList } from "../src/components/RequestList";
 import {
   endpointLabel,
@@ -22,21 +22,36 @@ const entry = (seq: number, extra: Partial<EntrySummary> = {}): EntrySummary => 
   nMessages: seq * 2,
   ...extra,
 });
-const record = (seq: number, messages: ContentBlock[], extra: Partial<RequestRecord> = {}): RequestRecord => ({
+const record = (
+  seq: number,
+  messages: ContentBlock[],
+  extra: Partial<RequestRecord> = {},
+): RequestRecord => ({
   id: `s/${seq}`,
   seq,
   model: "nemotron",
   request: { method: "POST", url: "/v1/chat/completions", body: { model: "nemotron" } },
   response: { status: 200 },
-  parsed: { view: { system: [], tools: [], messages }, usageStats: { totalInput: 900, output: 102 } },
+  parsed: {
+    view: { system: [], tools: [], messages },
+    usageStats: { totalInput: 900, output: 102 },
+  },
   ...extra,
 });
 const user = (text: string): ContentBlock => ({ role: "user", type: "text", text });
 const assistant = (text: string): ContentBlock => ({ role: "assistant", type: "text", text });
-const call = (name: string, callId: string): ContentBlock => ({ type: "tool_use", name, callId, text: "{}" });
+const call = (name: string, callId: string): ContentBlock => ({
+  type: "tool_use",
+  name,
+  callId,
+  text: "{}",
+});
 const output = (callId: string): ContentBlock => ({ type: "tool_result", callId, text: "done" });
 
-const asked = record(1, [user("<system-reminder>Be brief.</system-reminder>"), user("open the browser")]);
+const asked = record(1, [
+  user("<system-reminder>Be brief.</system-reminder>"),
+  user("open the browser"),
+]);
 const returned = record(2, [
   user("open the browser"),
   assistant(""),
@@ -63,10 +78,13 @@ describe("what a request was for", () => {
     });
     // Only what was added after the model's last reply counts, without its envelopes.
     expect(requestLead(followUp)).toEqual({ kind: "prompt", text: "what time is it?" });
-    expect(requestLead(record(4, [user("<system-reminder>Be brief.</system-reminder>")]))?.kind).toBe(
-      "harness",
-    );
-    expect(requestLead(record(5, [output("unknown")]))).toEqual({ kind: "tools", text: "tool output" });
+    expect(
+      requestLead(record(4, [user("<system-reminder>Be brief.</system-reminder>")]))?.kind,
+    ).toBe("harness");
+    expect(requestLead(record(5, [output("unknown")]))).toEqual({
+      kind: "tools",
+      text: "tool output",
+    });
   });
 
   it("has nothing to say about a request that carries no conversation", () => {
@@ -105,9 +123,9 @@ describe("what a request was for", () => {
     expect(requestLabel(entry(1), asked, true)).toBe("#1 · open the browser · nemotron");
     // Not loaded yet, or no conversation: the model or the endpoint.
     expect(requestLabel(entry(3), undefined, true)).toBe("#3 · nemotron");
-    expect(requestLabel(entry(9, { model: null, method: "GET", url: "/v1/models?limit=5" }), undefined)).toBe(
-      "#9 · GET /v1/models",
-    );
+    expect(
+      requestLabel(entry(9, { model: null, method: "GET", url: "/v1/models?limit=5" }), undefined),
+    ).toBe("#9 · GET /v1/models");
     // A capture outside the session is only known by its id.
     expect(requestLabel({ id: "other/0007" }, undefined)).toBe("other/0007");
   });
@@ -143,14 +161,20 @@ describe("request list rows", () => {
       /^Sends back the output of list_canvas_capabilities, open_canvas · nemotron · .* · 4 msg$/,
     );
     // No record yet: the row falls back to the model it called.
-    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveTextContent(/^other#3\+1:54 · 1\.20s$/);
+    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveTextContent(
+      /^other#3\+1:54 · 1\.20s$/,
+    );
     rerender(list({ models: ["nemotron"] }));
-    expect(screen.getByRole("button", { name: /open the browser.*#1/s })).not.toHaveTextContent("nemotron");
+    expect(screen.getByRole("button", { name: /open the browser.*#1/s })).not.toHaveTextContent(
+      "nemotron",
+    );
   });
 
   it("filters on what a row says", () => {
     render(list());
-    fireEvent.change(screen.getByLabelText(/^Filter requests by/), { target: { value: "open_canvas" } });
+    fireEvent.change(screen.getByLabelText(/^Filter requests by/), {
+      target: { value: "open_canvas" },
+    });
     expect(screen.getAllByRole("button", { name: /#\d/ })).toHaveLength(1);
     expect(screen.getByLabelText("Requests shown")).toHaveTextContent("1 / 3");
   });
@@ -184,19 +208,30 @@ describe("request list rows", () => {
 
   it("marks the two compared requests A and B instead of the open one", () => {
     const onSelect = vi.fn();
-    const { rerender } = render(list({ selected: "s/3", picks: ["s/1", "s/2"], comparing: true, onSelect }));
+    const { rerender } = render(
+      list({ selected: "s/3", picks: ["s/1", "s/2"], comparing: true, onSelect }),
+    );
     const first = screen.getByRole("button", { name: /open the browser.*#1/s });
     const second = screen.getByRole("button", { name: /open_canvas.*#2/s });
     expect(first).toHaveTextContent(/^Aopen the browser#1/);
     expect(first.title).toMatch(/^A, the baseline of the comparison · /);
     expect(second).toHaveTextContent(/^B→list_canvas_capabilities/);
-    expect([first, second].map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "true"]);
+    expect([first, second].map((row) => row.getAttribute("aria-pressed"))).toEqual([
+      "true",
+      "true",
+    ]);
     // The open request does not read as selected while comparing.
-    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     fireEvent.click(screen.getByRole("button", { name: /other.*#3/s }));
     expect(onSelect).toHaveBeenCalledWith("s/3");
     rerender(list({ selected: "s/3", picks: [] }));
-    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /other.*#3/s })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.queryByText("A", { selector: ".request-pick" })).not.toBeInTheDocument();
   });
 });

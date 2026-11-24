@@ -26,6 +26,11 @@ test("tokenStats preserves Anthropic token and cache counts without billing fiel
 
 test("tokenStats handles responses without usage", () => {
   assert.deepEqual(tokenStats(), {
-    input: 0, output: 0, cacheWrite: 0, cacheRead: 0, totalInput: 0, cacheHitRate: 0,
+    input: 0,
+    output: 0,
+    cacheWrite: 0,
+    cacheRead: 0,
+    totalInput: 0,
+    cacheHitRate: 0,
   });
 });

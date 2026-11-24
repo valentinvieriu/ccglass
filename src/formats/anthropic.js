@@ -46,9 +46,9 @@ export const anthropic = {
           label: `msg[${mi}].${m.role}[${bi}]`,
           role: m.role,
           type: b.type || "text",
-          name: b.name,                         // tool_use: which tool was called
-          callId: b.id || b.tool_use_id,        // pairs a tool_use with its tool_result
-          isError: !!b.is_error,                // tool_result: did the call fail
+          name: b.name, // tool_use: which tool was called
+          callId: b.id || b.tool_use_id, // pairs a tool_use with its tool_result
+          isError: !!b.is_error, // tool_result: did the call fail
           text: messageText(b),
           cache: !!b.cache_control,
         });

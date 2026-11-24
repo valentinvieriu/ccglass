@@ -12,7 +12,13 @@ export function groupRetries(entries, windowMs = 60_000) {
   for (const e of entries) {
     const g = out[out.length - 1];
     const lastTs = g?.retries?.at(-1)?.ts ?? g?.ts;
-    if (g && g.url === e.url && g.model === e.model && g.nMessages === e.nMessages && (e.ts - lastTs) < windowMs) {
+    if (
+      g &&
+      g.url === e.url &&
+      g.model === e.model &&
+      g.nMessages === e.nMessages &&
+      e.ts - lastTs < windowMs
+    ) {
       g.retries.push(e);
     } else {
       out.push({ ...e, retries: [] });

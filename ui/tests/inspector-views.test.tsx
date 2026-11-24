@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import RequestDetail from "../src/components/RequestDetail";
 import { ContentBlock } from "../src/components/JsonView";
 import DiffView from "../src/components/DiffView";
@@ -193,7 +193,9 @@ describe("request inspector", () => {
     expect(screen.getByText("data: provider-specific payload")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
     expect(screen.getByText("data: provider-specific payload")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Response" })).getByText("HTTP 502")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Response" })).getByText("HTTP 502"),
+    ).toBeInTheDocument();
   });
 
   it("preserves thinking, unknown content, cache annotations, tool inputs and tool-result pairing", async () => {
@@ -252,7 +254,9 @@ describe("request inspector", () => {
     const response = screen.getByRole("region", { name: "Response" });
     expect(within(response).getByText(/stop: tool_use/)).toBeInTheDocument();
     expect(screen.getByText("New thought", { selector: "pre" })).toBeInTheDocument();
-    fireEvent.click(within(response).getByRole("button", { name: /^Assistant · provider-extension/ }));
+    fireEvent.click(
+      within(response).getByRole("button", { name: /^Assistant · provider-extension/ }),
+    );
     expect(screen.getByLabelText("Formatted JSON")).toHaveTextContent('"payload": "opaque value"');
   });
 
@@ -263,9 +267,15 @@ describe("request inspector", () => {
       parsed: { ...record.parsed, view: { ...record.parsed!.view!, system } },
     });
     const { rerender } = render(
-      <RequestDetail record={withSystem([{ label: "system[0]", text: long }])} activeTab="system" />,
+      <RequestDetail
+        record={withSystem([{ label: "system[0]", text: long }])}
+        activeTab="system"
+      />,
     );
-    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.getByText(/Rule 39/)).toBeInTheDocument();
     rerender(
       <RequestDetail
@@ -276,7 +286,10 @@ describe("request inspector", () => {
         activeTab="system"
       />,
     );
-    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "system[0]" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("keeps what was sent apart from what came back and mounts only the selected item in full", () => {
@@ -308,11 +321,26 @@ describe("request inspector", () => {
         view: {
           ...record.parsed!.view!,
           messages: [
-            { type: "tool_use", name: "read_item", callId: "matched-call", text: '{"id":"evidence-2"}' },
+            {
+              type: "tool_use",
+              name: "read_item",
+              callId: "matched-call",
+              text: '{"id":"evidence-2"}',
+            },
             { type: "tool_result", callId: "matched-call", text: output },
           ],
         },
-        response: { content: [{ type: "tool_use", name: "raise_point", id: "new-call", input: { section: "evidence.saw", text: "Question the wait time" } }], stop_reason: "tool_use" },
+        response: {
+          content: [
+            {
+              type: "tool_use",
+              name: "raise_point",
+              id: "new-call",
+              input: { section: "evidence.saw", text: "Question the wait time" },
+            },
+          ],
+          stop_reason: "tool_use",
+        },
       },
     };
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -329,7 +357,9 @@ describe("request inspector", () => {
     expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
     fireEvent.click(rows[0]);
     const preview = screen.getByRole("complementary", { name: "Preview" });
-    expect(within(preview).getByText(/Call 1 · Asked for in the model's last reply/)).toBeInTheDocument();
+    expect(
+      within(preview).getByText(/Call 1 · Asked for in the model's last reply/),
+    ).toBeInTheDocument();
     expect(within(preview).getByText("hed-call")).toHaveAttribute("title", "Call ID: matched-call");
     const blocks = within(preview).getAllByLabelText("Formatted JSON");
     expect(blocks[0]).toHaveTextContent('"id": "evidence-2"');
@@ -337,9 +367,15 @@ describe("request inspector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy output of read_item" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(output));
     rerender(<RequestDetail record={{ ...captured }} activeTab="overview" />);
-    expect(screen.getByRole("button", { name: /^read_item/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^read_item/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     fireEvent.keyDown(screen.getByRole("button", { name: /^read_item/ }), { key: "ArrowDown" });
-    expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByRole("button", { name: /^raise_point/ })).toHaveFocus();
     rerender(<RequestDetail record={{ ...captured, id: "next-request" }} activeTab="overview" />);
     expect(screen.queryByText(/complete output/)).not.toBeInTheDocument();
@@ -356,8 +392,16 @@ describe("request inspector", () => {
           tools: record.parsed!.view!.tools,
           messages: [
             sent("<system-reminder>\nStay in the sandbox.\n</system-reminder>"),
-            sent("<current_datetime>2026-01-01</current_datetime>\n\nFind the flaky test\n\n<canvas-context>none</canvas-context>"),
-            { role: "assistant", type: "tool_use", name: "Bash", callId: "c1", text: '{"command":"npm test"}' },
+            sent(
+              "<current_datetime>2026-01-01</current_datetime>\n\nFind the flaky test\n\n<canvas-context>none</canvas-context>",
+            ),
+            {
+              role: "assistant",
+              type: "tool_use",
+              name: "Bash",
+              callId: "c1",
+              text: '{"command":"npm test"}',
+            },
             { role: "tool", type: "tool_result", callId: "c1", text: "exit code 1", isError: true },
             sent("It fails one run in five.", "assistant"),
             sent("Fix it please"),
@@ -370,13 +414,17 @@ describe("request inspector", () => {
     expect(screen.getByText(/~1,000/)).toBeInTheDocument();
     const fresh = screen.getByRole("region", { name: "New since the last reply" });
     expect(within(fresh).getAllByRole("button")).toHaveLength(2);
-    expect(within(fresh).getByRole("button", { name: /^User · Fix it please/ })).toBeInTheDocument();
+    expect(
+      within(fresh).getByRole("button", { name: /^User · Fix it please/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Bash/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prompts 2" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Errors 1" }));
     const failed = screen.getByRole("button", { name: /^Bash · npm test · error/ });
     expect(failed).toHaveAttribute("aria-pressed", "true");
-    expect(within(screen.getByRole("complementary", { name: "Preview" })).getByText("exit code 1")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("complementary", { name: "Preview" })).getByText("exit code 1"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     fireEvent.change(screen.getByLabelText("Find in this request"), { target: { value: "flaky" } });
     const prompt = screen.getByRole("button", { name: /^User · Find the flaky test/ });
@@ -386,25 +434,43 @@ describe("request inspector", () => {
     fireEvent.change(screen.getByLabelText("Find in this request"), { target: { value: "" } });
     expect(screen.queryByRole("button", { name: /^Harness ·/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Earlier turns/, expanded: false }));
-    expect(screen.getByRole("button", { name: /^Harness · system-reminder · Stay in the sandbox/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Harness · system-reminder · Stay in the sandbox/ }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^System prompt/ }));
-    expect(screen.getByRole("button", { name: /^System prompt · You are a careful agent/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      screen.getByRole("button", { name: /^System prompt · You are a careful agent/ }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps failures in the response and does not imply unmatched tools are running", () => {
     const pending: RequestRecord = {
       id: "pending",
-      parsed: { view: { system: [], tools: [], messages: [{ type: "tool_use", name: "shell", callId: "earlier", text: '{"command":"pwd"}' }] } },
+      parsed: {
+        view: {
+          system: [],
+          tools: [],
+          messages: [
+            { type: "tool_use", name: "shell", callId: "earlier", text: '{"command":"pwd"}' },
+          ],
+        },
+      },
       response: null,
     };
     const { rerender } = render(<RequestDetail record={pending} activeTab="overview" />);
     expect(screen.getByRole("button", { name: /^shell/ })).toHaveTextContent("no output captured");
     expect(screen.getByText("Waiting for the model response…")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Errors/ })).not.toBeInTheDocument();
-    rerender(<RequestDetail record={{ ...pending, id: "failed", response: { status: 502, error: "upstream disconnected" } }} activeTab="overview" />);
+    rerender(
+      <RequestDetail
+        record={{
+          ...pending,
+          id: "failed",
+          response: { status: 502, error: "upstream disconnected" },
+        }}
+        activeTab="overview"
+      />,
+    );
     const response = screen.getByRole("region", { name: "Response" });
     const failure = within(response).getByRole("button", { name: /^Request failed/ });
     expect(failure).toHaveTextContent("error 502: upstream disconnected");
@@ -552,11 +618,17 @@ describe("response and HTTP tabs", () => {
   });
 
   it("says when no response has arrived instead of showing empty cards", () => {
-    render(<RequestDetail record={{ ...exchange, response: null, parsed: { view: record.parsed!.view } }} />);
+    render(
+      <RequestDetail
+        record={{ ...exchange, response: null, parsed: { view: record.parsed!.view } }}
+      />,
+    );
     fireEvent.click(screen.getByRole("tab", { name: "response" }));
     expect(screen.getByText("No response captured yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "HTTP" }));
-    expect(within(screen.getByRole("region", { name: "Response" })).getByText("not captured yet")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Response" })).getByText("not captured yet"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Response headers" })).toBeNull();
   });
 });

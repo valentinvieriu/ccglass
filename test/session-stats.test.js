@@ -111,7 +111,11 @@ test("aggregateSessionStats sums tokens across completed entries without billing
       response: {
         raw: JSON.stringify({
           choices: [{ message: { content: "hi" }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 100, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 80 } },
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 10,
+            prompt_tokens_details: { cached_tokens: 80 },
+          },
         }),
       },
     },

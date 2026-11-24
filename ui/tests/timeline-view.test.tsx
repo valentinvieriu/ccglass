@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import TimelineView, { type TimelineViewProps } from "../src/components/TimelineView";
 import type { EntrySummary, RequestRecord } from "../src/types";
 
@@ -54,7 +54,9 @@ describe("conversation timeline", () => {
     const { container, rerender } = render(<TimelineView {...initial} />);
     expect(screen.queryByText("Hidden Codex prompt")).not.toBeInTheDocument();
     expect(row(/^Bash · printf hello · awaiting output/)).toHaveAttribute("aria-pressed", "true");
-    expect(within(preview()).getByText("Asked for in response #1. No output captured yet.")).toBeInTheDocument();
+    expect(
+      within(preview()).getByText("Asked for in response #1. No output captured yet."),
+    ).toBeInTheDocument();
     const toolRow = container.querySelector('[data-kind="tool"]');
     const second = record(2, "gpt-codex");
     second.parsed!.view!.messages = [
@@ -83,7 +85,9 @@ describe("conversation timeline", () => {
     ).toBeInTheDocument();
     expect(within(preview()).getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
-    expect(within(preview()).getByLabelText("Formatted JSON")).toHaveTextContent('"command": "printf hello"');
+    expect(within(preview()).getByLabelText("Formatted JSON")).toHaveTextContent(
+      '"command": "printf hello"',
+    );
   });
 
   it("says where each item first appeared, independently of message role and the newest turn", () => {
@@ -94,11 +98,15 @@ describe("conversation timeline", () => {
     ];
     const second = record(2);
     second.parsed!.view!.messages = [...first.parsed!.view!.messages];
-    const { container } = render(<TimelineView {...props({
-      entries: [entry(1), entry(2)],
-      records: { [first.id]: first, [second.id]: second },
-      isLive: false,
-    })} />);
+    const { container } = render(
+      <TimelineView
+        {...props({
+          entries: [entry(1), entry(2)],
+          records: { [first.id]: first, [second.id]: second },
+          isLive: false,
+        })}
+      />,
+    );
     expect(screen.getByRole("button", { name: "Prompts 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Everything 4" })).toBeInTheDocument();
     // Every request is loaded, so there is no progress to report.
@@ -130,10 +138,14 @@ describe("conversation timeline", () => {
       { type: "tool_result", callId: "paired", text: "Working directory: /project" },
       { type: "tool_result", callId: "unknown", text: "Unmatched output" },
     ];
-    const { container } = render(<TimelineView {...props({
-      entries: [entry(1, "gpt-codex"), entry(2, "gpt-codex")],
-      records: { [first.id]: first, [second.id]: second },
-    })} />);
+    const { container } = render(
+      <TimelineView
+        {...props({
+          entries: [entry(1, "gpt-codex"), entry(2, "gpt-codex")],
+          records: { [first.id]: first, [second.id]: second },
+        })}
+      />,
+    );
     const orphan = container.querySelector('[data-kind="output"]')!;
     expect(orphan).toHaveAccessibleName("Tool output · Unmatched output · ~4 tok");
     expect(orphan.closest(".replay-line")).toHaveAttribute("data-entry", "session/2");
@@ -181,7 +193,9 @@ describe("conversation timeline", () => {
     expect(screen.queryByRole("button", { name: "Open request 1" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open request 2" })).not.toBeInTheDocument();
     expect(screen.getByText(/Session exports include every request/)).toBeInTheDocument();
-    expect(within(preview()).getByText(/Request #3 · claude · .* · HTTP 200 · \$0\.0123/)).toBeInTheDocument();
+    expect(
+      within(preview()).getByText(/Request #3 · claude · .* · HTTP 200 · \$0\.0123/),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open request 3" }));
     fireEvent.click(screen.getByRole("button", { name: /Open request #3/ }));
     expect(initial.onOpen).toHaveBeenCalledTimes(2);
@@ -223,7 +237,11 @@ describe("conversation timeline", () => {
   it("says how many requests are loaded only while some are missing", () => {
     render(
       <TimelineView
-        {...props({ entries: [entry(1), entry(2)], records: { "session/1": record(1) }, loading: true })}
+        {...props({
+          entries: [entry(1), entry(2)],
+          records: { "session/1": record(1) },
+          loading: true,
+        })}
       />,
     );
     expect(screen.getByText("1 / 2 requests loaded")).toBeInTheDocument();
@@ -308,7 +326,10 @@ describe("conversation timeline", () => {
     fireEvent.click(screen.getByRole("button", { name: "Go to request 1" }));
     expect(row(/^Assistant · Reply 1/)).toHaveAttribute("aria-pressed", "true");
     expect(row(/^Assistant · Reply 1/)).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Go to request 1" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Go to request 1" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     expect(screen.getByRole("checkbox", { name: "Auto-scroll" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("checkbox", { name: "Auto-scroll" }));
     expect(row(/^Assistant · Reply 3/)).toHaveAttribute("aria-pressed", "true");
@@ -324,27 +345,46 @@ describe("conversation timeline", () => {
       url: "/v1/models",
       status,
     });
-    const prompt = { role: "user", type: "text", text: "<current_datetime>now</current_datetime>\n\nFix the login test" };
+    const prompt = {
+      role: "user",
+      type: "text",
+      text: "<current_datetime>now</current_datetime>\n\nFix the login test",
+    };
     const first = record(3);
     first.latencyMs = 2000;
     first.parsed!.view!.messages = [prompt];
-    first.parsed!.response!.content = [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }];
+    first.parsed!.response!.content = [
+      { type: "tool_use", name: "Bash", input: { command: "npm test" } },
+    ];
     const second = record(4);
     second.parsed!.view!.messages = [
       prompt,
-      { role: "assistant", type: "tool_use", name: "Bash", callId: "client-1", text: '{"command":"npm test"}' },
+      {
+        role: "assistant",
+        type: "tool_use",
+        name: "Bash",
+        callId: "client-1",
+        text: '{"command":"npm test"}',
+      },
       { role: "tool", type: "tool_result", callId: "client-1", text: "1 failed", isError: true },
     ];
-    render(<TimelineView {...props({
-      entries: [probe(1, 404), probe(2, 200), entry(3), entry(4)],
-      records: { [first.id]: first, [second.id]: second },
-      isLive: false,
-    })} />);
+    render(
+      <TimelineView
+        {...props({
+          entries: [probe(1, 404), probe(2, 200), entry(3), entry(4)],
+          records: { [first.id]: first, [second.id]: second },
+          isLive: false,
+        })}
+      />,
+    );
     const fold = screen.getByRole("button", { name: /2 setup requests/ });
     expect(fold).toHaveAttribute("aria-expanded", "false");
     expect(fold).toHaveTextContent("GET /v1/models · 1 failed");
     expect(screen.queryByRole("button", { name: /^GET/ })).not.toBeInTheDocument();
-    expect(row(/^User · Fix the login test · 2 requests · 1 tool · 2\.00s/)).toHaveAttribute("aria-pressed", "true");
+    expect(row(/^User · Fix the login test · 2 requests · 1 tool · 2\.00s/)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(within(preview()).getByText("What the user typed")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Bash/ })).toHaveLength(1);
     expect(row(/^Bash · npm test · error · ~2 tok/)).toBeInTheDocument();
@@ -360,7 +400,9 @@ describe("conversation timeline", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tool errors 1" }));
     expect(document.querySelectorAll(".flow-row")).toHaveLength(1);
     expect(row(/^Bash/)).toHaveAttribute("aria-pressed", "true");
-    fireEvent.change(screen.getByLabelText("Find in this session"), { target: { value: "nothing like this" } });
+    fireEvent.change(screen.getByLabelText("Find in this session"), {
+      target: { value: "nothing like this" },
+    });
     expect(screen.getByText(/Nothing in this session matches/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear the filter" }));
     expect(document.querySelectorAll(".flow-row").length).toBeGreaterThan(3);
@@ -416,11 +458,15 @@ describe("conversation timeline", () => {
     // One of each, counted in requests.
     expect(screen.getByRole("button", { name: "Failed 1" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancelled 1" }));
-    const line = row(/^Cancelled · The client closed the connection before the response finished · cancelled/);
+    const line = row(
+      /^Cancelled · The client closed the connection before the response finished · cancelled/,
+    );
     expect(line).not.toHaveClass("flow-row-error");
     expect(screen.queryByRole("button", { name: /^Request failed/ })).not.toBeInTheDocument();
     fireEvent.click(line);
-    expect(within(preview()).getByRole("heading", { name: "Request cancelled" })).toBeInTheDocument();
+    expect(
+      within(preview()).getByRole("heading", { name: "Request cancelled" }),
+    ).toBeInTheDocument();
     expect(within(preview()).getByText("Request #1 was cancelled.")).toBeInTheDocument();
     expect(within(preview()).getByText("client disconnected")).toBeInTheDocument();
   });
@@ -457,7 +503,9 @@ describe("conversation timeline", () => {
   it("tells a new user what to do while recording is on and nothing has arrived", () => {
     render(<TimelineView {...props({ isLive: true, onDelete: vi.fn() })} />);
     expect(screen.getByText("Recording. Nothing has come through yet")).toBeInTheDocument();
-    expect(screen.getByText(/Point your agent's API base URL at the ccglass proxy/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Point your agent's API base URL at the ccglass proxy/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete session…" })).not.toBeInTheDocument();
   });
 

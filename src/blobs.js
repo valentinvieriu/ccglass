@@ -45,13 +45,16 @@ const HISTORY_KEYS = ["messages", "input"];
 export function packRecord(root, rec) {
   // Preserve the full request envelope (method, url, headers, …) minus the body,
   // which is split into meta + blob refs below (or stored raw, see below).
-  const reqEnvelope = { ...(rec.request || {}) };
+  const reqEnvelope = { ...rec.request };
   const body = reqEnvelope.body;
   delete reqEnvelope.body;
 
   const base = {
     v: 2,
-    id: rec.id, session: rec.session, seq: rec.seq, ts: rec.ts,
+    id: rec.id,
+    session: rec.session,
+    seq: rec.seq,
+    ts: rec.ts,
     format: rec.format,
     response: rec.response ?? null,
   };
@@ -144,7 +147,9 @@ export function unpackRecord(root, manifest) {
   if ("rawBody" in r) {
     const { rawBody, ...envelope } = r;
     return {
-      id: manifest.id, session: manifest.session, seq: manifest.seq,
+      id: manifest.id,
+      session: manifest.session,
+      seq: manifest.seq,
       ts: manifest.ts,
       ...(manifest.startedAt != null ? { startedAt: manifest.startedAt } : {}),
       format: manifest.format,
@@ -157,12 +162,14 @@ export function unpackRecord(root, manifest) {
   // then system/tools/history — not the original insertion order. This is deepEqual-safe,
   // but do NOT JSON.stringify-fingerprint the reconstructed body expecting byte-identical
   // key order to the original.
-  const body = { ...(meta || {}) };
+  const body = { ...meta };
   if (system != null) body.system = safeBlob(root, system);
   if (tools != null) body.tools = safeBlob(root, tools);
   if (historyKey) body[historyKey] = (messages || []).map((ref) => safeBlob(root, ref));
   return {
-    id: manifest.id, session: manifest.session, seq: manifest.seq,
+    id: manifest.id,
+    session: manifest.session,
+    seq: manifest.seq,
     ts: manifest.ts,
     ...(manifest.startedAt != null ? { startedAt: manifest.startedAt } : {}),
     format: manifest.format,

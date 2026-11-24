@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { FilterBar } from "../src/components/FlowItems";
 import { MiddleTruncate } from "../src/components/MiddleTruncate";
 

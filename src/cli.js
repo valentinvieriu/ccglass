@@ -24,7 +24,9 @@ import {
 } from "./reasonix-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version;
+const VERSION = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+).version;
 
 const HELP = `ccglass v${VERSION} — see what your coding agent sends to the model
 
@@ -101,8 +103,10 @@ function parseArgs(argv) {
     else if (a === "--env-var") opts.envVar = argv[++i];
     else if (a === "--format") opts.format = argv[++i];
     else if (a === "--by-session") opts.bySession = true;
-    else if (a === "--by-timestamp") { opts.bySession = true; opts.byTimestamp = true; }
-    else rest.push(a);
+    else if (a === "--by-timestamp") {
+      opts.bySession = true;
+      opts.byTimestamp = true;
+    } else rest.push(a);
   }
   return { opts, rest };
 }
@@ -110,13 +114,20 @@ function parseArgs(argv) {
 function listen(server, port) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port ?? 0, process.env.CCGLASS_BIND_HOST || "127.0.0.1", () => resolve(server.address().port));
+    server.listen(port ?? 0, process.env.CCGLASS_BIND_HOST || "127.0.0.1", () =>
+      resolve(server.address().port),
+    );
   });
 }
 
 function openBrowser(url) {
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  const p = spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" });
+  const cmd =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  const p = spawn(cmd, [url], {
+    stdio: "ignore",
+    detached: true,
+    shell: process.platform === "win32",
+  });
   p.on("error", () => {});
   p.unref();
 }
@@ -153,8 +164,8 @@ function maybeLegacyHint(cwd, captureDir) {
   if (hasCapturedLogs(captureDir)) return;
   process.stderr.write(
     `  \x1b[33mnote:\x1b[0m found logs in ./.ccglass (this project directory only).\n` +
-    `        This run saves new captures under ${captureDir}\n` +
-    `        Run \`ccglass migrate\` to copy ./.ccglass from the current directory into that store.\n`
+      `        This run saves new captures under ${captureDir}\n` +
+      `        Run \`ccglass migrate\` to copy ./.ccglass from the current directory into that store.\n`,
   );
 }
 
@@ -181,7 +192,12 @@ function detectCodexChatGPTAuth() {
   return new Promise((resolve) => {
     let output = "";
     let settled = false;
-    const finish = (result) => { if (!settled) { settled = true; resolve(result); } };
+    const finish = (result) => {
+      if (!settled) {
+        settled = true;
+        resolve(result);
+      }
+    };
 
     let child;
     try {
@@ -190,11 +206,21 @@ function detectCodexChatGPTAuth() {
       return finish(null);
     }
 
-    const timer = setTimeout(() => { try { child.kill(); } catch {} finish(null); }, 5000);
-    const collect = (d) => { output += d; };
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {}
+      finish(null);
+    }, 5000);
+    const collect = (d) => {
+      output += d;
+    };
     child.stdout?.on("data", collect);
     child.stderr?.on("data", collect);
-    child.on("error", () => { clearTimeout(timer); finish(null); });
+    child.on("error", () => {
+      clearTimeout(timer);
+      finish(null);
+    });
     child.on("close", () => {
       clearTimeout(timer);
       const authMatch = output.match(/auth\s+mode\s+(\S+)/i);
@@ -214,7 +240,7 @@ function codexConfigBaseUrl() {
   const configPath = path.join(os.homedir(), ".codex", "config.toml");
   if (!fs.existsSync(configPath)) return null;
   const toml = fs.readFileSync(configPath, "utf8");
-  const m = toml.match(/^\[model_providers\.(\S+)\][^\[]*?^base_url\s*=\s*"([^"]+)"/m);
+  const m = toml.match(/^\[model_providers\.(\S+)\][^[]*?^base_url\s*=\s*"([^"]+)"/m);
   return m ? { provider: m[1], baseUrl: m[2] } : null;
 }
 // Read the provider's base-URL env var from Claude Code's settings.json env
@@ -267,8 +293,7 @@ async function wrap(command, args, opts) {
   const reasonixBased = provider.command === "reasonix" || provider.command === "dsnix";
   const reasonixEnvUrl = reasonixBased ? resolveDeepseekBaseUrlEnv() : null;
   const reasonixConfigUrl = reasonixBased ? reasonixConfigBaseUrl() : null;
-  const reasonixDefault =
-    reasonixBased && provider.upstream !== "auto" ? provider.upstream : null;
+  const reasonixDefault = reasonixBased && provider.upstream !== "auto" ? provider.upstream : null;
   const reasonixResolved = reasonixBased
     ? resolveReasonixUpstream({
         envUrl: reasonixEnvUrl,
@@ -276,41 +301,66 @@ async function wrap(command, args, opts) {
         defaultUrl: reasonixDefault,
       })
     : null;
-  let upstream = opts.upstream
-    || (codexConfig && codexConfig.baseUrl)
-    || reasonixResolved
-    || (provider.upstream === "auto" ? null : provider.upstream);
+  let upstream =
+    opts.upstream ||
+    (codexConfig && codexConfig.baseUrl) ||
+    reasonixResolved ||
+    (provider.upstream === "auto" ? null : provider.upstream);
   // autoUpstream: resolve upstream from the same env var we're about to override
   if (!upstream && provider.autoUpstream) upstream = process.env[provider.envVar];
   // Picking the upstream from settings.json covers two cases: vanilla Claude
   // (default upstream is anthropic.com, switchers write ANTHROPIC_BASE_URL) and
   // autoUpstream providers like bedrock/vertex (no fixed upstream — settings.json
   // is often where the user's gateway URL lives).
-  if (!opts.upstream && settingsBaseUrl && (provider.upstream === "https://api.anthropic.com" || provider.autoUpstream)) {
+  if (
+    !opts.upstream &&
+    settingsBaseUrl &&
+    (provider.upstream === "https://api.anthropic.com" || provider.autoUpstream)
+  ) {
     upstream = settingsBaseUrl;
-    process.stderr.write(`  \x1b[36m●\x1b[0m ccglass: upstream from Claude Code settings.json → ${upstream}\n`);
+    process.stderr.write(
+      `  \x1b[36m●\x1b[0m ccglass: upstream from Claude Code settings.json → ${upstream}\n`,
+    );
   }
   if (!opts.upstream && codexConfig) {
-    process.stderr.write(`  \x1b[36m●\x1b[0m ccglass: upstream from Codex config.toml → ${codexConfig.baseUrl}\n`);
+    process.stderr.write(
+      `  \x1b[36m●\x1b[0m ccglass: upstream from Codex config.toml → ${codexConfig.baseUrl}\n`,
+    );
   }
   if (!opts.upstream && reasonixBased && reasonixEnvUrl && upstream === reasonixEnvUrl) {
-    process.stderr.write(`  \x1b[36m●\x1b[0m ccglass: upstream from DEEPSEEK_BASE_URL env → ${reasonixEnvUrl}\n`);
-  } else if (!opts.upstream && reasonixBased && reasonixConfigUrl && upstream === reasonixConfigUrl) {
-    process.stderr.write(`  \x1b[36m●\x1b[0m ccglass: upstream from Reasonix config.json → ${reasonixConfigUrl}\n`);
+    process.stderr.write(
+      `  \x1b[36m●\x1b[0m ccglass: upstream from DEEPSEEK_BASE_URL env → ${reasonixEnvUrl}\n`,
+    );
+  } else if (
+    !opts.upstream &&
+    reasonixBased &&
+    reasonixConfigUrl &&
+    upstream === reasonixConfigUrl
+  ) {
+    process.stderr.write(
+      `  \x1b[36m●\x1b[0m ccglass: upstream from Reasonix config.json → ${reasonixConfigUrl}\n`,
+    );
   }
   // A provider switcher (e.g. cc-switch) may have set ANTHROPIC_BASE_URL directly in the
   // environment rather than in settings.json — pick it up so the proxy forwards to the
   // right third-party API instead of defaulting to api.anthropic.com.
-  if (!opts.upstream && !settingsBaseUrl && claudeBased && process.env[provider.envVar] &&
-      provider.upstream === "https://api.anthropic.com") {
+  if (
+    !opts.upstream &&
+    !settingsBaseUrl &&
+    claudeBased &&
+    process.env[provider.envVar] &&
+    provider.upstream === "https://api.anthropic.com"
+  ) {
     upstream = process.env[provider.envVar];
-    process.stderr.write(`  \x1b[36m●\x1b[0m ccglass: upstream from ${provider.envVar} env → ${upstream}\n`);
+    process.stderr.write(
+      `  \x1b[36m●\x1b[0m ccglass: upstream from ${provider.envVar} env → ${upstream}\n`,
+    );
   }
 
   if (!upstream) {
     process.stderr.write(
       `ccglass: ${provider.label} needs an upstream URL.\n` +
-      `  Set ${provider.envVar} in your environment, or pass --upstream <url>.\n`
+        `  Set ${provider.envVar} in your environment, or pass --upstream <url>.\n`,
     );
     process.exit(1);
   }
@@ -323,8 +373,8 @@ async function wrap(command, args, opts) {
   } catch {
     process.stderr.write(
       `ccglass: invalid upstream URL: "${upstream}"\n` +
-      `  The URL must start with http:// or https://, e.g. https://api.openai.com\n` +
-      `  Check the value of ${provider.envVar} in your environment, or pass --upstream <url>.\n`
+        `  The URL must start with http:// or https://, e.g. https://api.openai.com\n` +
+        `  Check the value of ${provider.envVar} in your environment, or pass --upstream <url>.\n`,
     );
     process.exit(1);
   }
@@ -351,18 +401,18 @@ async function wrap(command, args, opts) {
   if (provider.command === "opencode") {
     process.stderr.write(
       `  \x1b[33m⚠\x1b[0m  OpenCode reads baseURL from opencode.json, not OPENAI_BASE_URL.\n` +
-      `     To capture traffic, set your provider's baseURL in opencode.json to:\n` +
-      `       \x1b[1m${proxyUrl}\x1b[0m\n` +
-      `     Then restart OpenCode through ccglass.\n` +
-      `     Tip: use --proxy-port <n> to pin the proxy port so opencode.json stays stable.\n\n`
+        `     To capture traffic, set your provider's baseURL in opencode.json to:\n` +
+        `       \x1b[1m${proxyUrl}\x1b[0m\n` +
+        `     Then restart OpenCode through ccglass.\n` +
+        `     Tip: use --proxy-port <n> to pin the proxy port so opencode.json stays stable.\n\n`,
     );
   }
   if (codexChatGPTInfo) {
     const ep = codexChatGPTInfo.endpoint ? ` (${codexChatGPTInfo.endpoint})` : "";
     process.stderr.write(
       `  \x1b[33m⚠\x1b[0m  Codex is using ChatGPT auth${ep}.\n` +
-      `     This websocket transport bypasses OPENAI_BASE_URL — the dashboard will be empty.\n` +
-      `     To capture traffic, switch Codex to API-key mode (OPENAI_API_KEY).\n\n`
+        `     This websocket transport bypasses OPENAI_BASE_URL — the dashboard will be empty.\n` +
+        `     To capture traffic, switch Codex to API-key mode (OPENAI_API_KEY).\n\n`,
     );
   }
   // Direct AWS Bedrock signs requests with SigV4, which covers the Host header.
@@ -375,8 +425,8 @@ async function wrap(command, args, opts) {
       if (host.endsWith(".amazonaws.com")) {
         process.stderr.write(
           `  \x1b[33m⚠\x1b[0m  Direct AWS Bedrock (${host}) uses SigV4 signing that includes the Host header.\n` +
-          `     ccglass rewrites Host when forwarding, so AWS will reject the proxied request.\n` +
-          `     Point ANTHROPIC_BEDROCK_BASE_URL at a Bedrock-compat gateway in front of AWS instead.\n\n`
+            `     ccglass rewrites Host when forwarding, so AWS will reject the proxied request.\n` +
+            `     Point ANTHROPIC_BEDROCK_BASE_URL at a Bedrock-compat gateway in front of AWS instead.\n\n`,
         );
       }
     } catch {}
@@ -389,7 +439,9 @@ async function wrap(command, args, opts) {
   // the env-var precedence regression in some Claude Code versions.
   if (claudeBased && opts.settingsOverride && !provider.noSettings) {
     if (settingsBaseUrl)
-      process.stderr.write(`  \x1b[33mnote:\x1b[0m settings.json sets ${provider.envVar}=${settingsBaseUrl}; overriding it so claude hits the proxy\n`);
+      process.stderr.write(
+        `  \x1b[33mnote:\x1b[0m settings.json sets ${provider.envVar}=${settingsBaseUrl}; overriding it so claude hits the proxy\n`,
+      );
     args = ["--settings", JSON.stringify({ env: { [provider.envVar]: proxyUrl } }), ...args];
   }
 
@@ -402,7 +454,9 @@ async function wrap(command, args, opts) {
     // so proxy receives /responses and correctly forwards to /v1/responses.
     args = ["-c", `${configKey}="${proxyUrl}"`, ...args];
     if (codexConfig.baseUrl)
-      process.stderr.write(`  \x1b[33mnote:\x1b[0m config.toml sets ${configKey}=${codexConfig.baseUrl}; overriding via -c\n`);
+      process.stderr.write(
+        `  \x1b[33mnote:\x1b[0m config.toml sets ${configKey}=${codexConfig.baseUrl}; overriding via -c\n`,
+      );
   }
 
   const spawnCmd = provider.command || command;
@@ -422,14 +476,18 @@ async function wrap(command, args, opts) {
       process.stderr.write(`\nccglass: command not found: ${spawnCmd}\n`);
       process.stderr.write(`  Make sure '${spawnCmd}' is installed and available in your PATH.\n`);
       if (process.platform === "win32")
-        process.stderr.write(`  On Windows, try reinstalling it (e.g. npm install -g ${spawnCmd}) and reopen your terminal.\n`);
+        process.stderr.write(
+          `  On Windows, try reinstalling it (e.g. npm install -g ${spawnCmd}) and reopen your terminal.\n`,
+        );
     } else {
       process.stderr.write(`\nccglass: ${e.message}\n`);
     }
     shutdown(1);
   });
   child.on("exit", (code) => {
-    process.stderr.write(`\n  \x1b[36m●\x1b[0m ccglass: ${spawnCmd} exited. Logs saved to ${path.relative(process.cwd(), store.sessionDir)}\n`);
+    process.stderr.write(
+      `\n  \x1b[36m●\x1b[0m ccglass: ${spawnCmd} exited. Logs saved to ${path.relative(process.cwd(), store.sessionDir)}\n`,
+    );
     process.stderr.write(`    Re-open anytime with: ccglass view\n`);
     shutdown(code ?? 0);
   });
@@ -455,16 +513,16 @@ async function wrapForward(provider, opts) {
 
   process.stderr.write(
     `\n  \x1b[36m●\x1b[0m ccglass forward-proxy watching \x1b[1m${provider.label}\x1b[0m` +
-    `\n    proxy:     \x1b[1m${proxyUrl}\x1b[0m` +
-    `\n    dashboard: \x1b[1m${dashUrl}\x1b[0m` +
-    `\n    intercepting: ${targets.join(", ")}` +
-    `\n` +
-    `\n    Add to your client settings:` +
-    `\n      "http.proxy": "${proxyUrl}"` +
-    `\n      "http.proxyStrictSSL": false` +
-    `\n` +
-    (provider.note ? `    \x1b[33mnote:\x1b[0m ${provider.note}\n` : "") +
-    `\n    Press Ctrl-C to stop.\n\n`
+      `\n    proxy:     \x1b[1m${proxyUrl}\x1b[0m` +
+      `\n    dashboard: \x1b[1m${dashUrl}\x1b[0m` +
+      `\n    intercepting: ${targets.join(", ")}` +
+      `\n` +
+      `\n    Add to your client settings:` +
+      `\n      "http.proxy": "${proxyUrl}"` +
+      `\n      "http.proxyStrictSSL": false` +
+      `\n` +
+      (provider.note ? `    \x1b[33mnote:\x1b[0m ${provider.note}\n` : "") +
+      `\n    Press Ctrl-C to stop.\n\n`,
   );
 
   if (opts.open) openBrowser(dashUrl);
@@ -501,17 +559,18 @@ async function wrapProxyOnly(provider, opts) {
   if (!upstream) {
     process.stderr.write(
       `ccglass proxy: ${provider.label} needs an upstream URL.\n` +
-      `  Set ${provider.envVar} in your environment, or pass --upstream <url>.\n`
+        `  Set ${provider.envVar} in your environment, or pass --upstream <url>.\n`,
     );
     process.exit(1);
   }
   try {
     const parsed = new URL(upstream);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("bad protocol");
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      throw new Error("bad protocol");
   } catch {
     process.stderr.write(
       `ccglass proxy: invalid upstream URL: "${upstream}"\n` +
-      `  Must start with http:// or https://, e.g. https://api.openai.com\n`
+        `  Must start with http:// or https://, e.g. https://api.openai.com\n`,
     );
     process.exit(1);
   }
@@ -527,20 +586,24 @@ async function wrapProxyOnly(provider, opts) {
 
   process.stderr.write(
     `\n  \x1b[36m●\x1b[0m ccglass proxy → ${upstream}` +
-    (src ? `   \x1b[2m(${src})\x1b[0m` : "") +
-    `\n    proxy:     \x1b[1m${proxyUrl}\x1b[0m` +
-    `\n    dashboard: \x1b[1m${dashUrl}\x1b[0m` +
-    `\n` +
-    `\n    Set your tool's API base URL (${provider.envVar}) to: \x1b[1m${proxyUrl}\x1b[0m` +
-    `\n    Point your IDE / client there, then watch every request in the dashboard.` +
-    `\n` +
-    (provider.note ? `\n    \x1b[33mnote:\x1b[0m ${provider.note}\n` : "") +
-    `\n    Press Ctrl-C to stop.\n\n`
+      (src ? `   \x1b[2m(${src})\x1b[0m` : "") +
+      `\n    proxy:     \x1b[1m${proxyUrl}\x1b[0m` +
+      `\n    dashboard: \x1b[1m${dashUrl}\x1b[0m` +
+      `\n` +
+      `\n    Set your tool's API base URL (${provider.envVar}) to: \x1b[1m${proxyUrl}\x1b[0m` +
+      `\n    Point your IDE / client there, then watch every request in the dashboard.` +
+      `\n` +
+      (provider.note ? `\n    \x1b[33mnote:\x1b[0m ${provider.note}\n` : "") +
+      `\n    Press Ctrl-C to stop.\n\n`,
   );
 
   if (opts.open) openBrowser(dashUrl);
 
-  const shutdown = () => { proxy.close(); dashboard.close(); process.exit(0); };
+  const shutdown = () => {
+    proxy.close();
+    dashboard.close();
+    process.exit(0);
+  };
   for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, shutdown);
 }
 
@@ -553,7 +616,9 @@ async function view(opts) {
   const dashboard = createServer({ roots: opts.readRoots, store: null });
   const dashPort = await listen(dashboard, opts.port);
   const dashUrl = `http://127.0.0.1:${dashPort}`;
-  process.stderr.write(`\n  \x1b[36m●\x1b[0m ccglass dashboard: \x1b[1m${dashUrl}\x1b[0m  (viewing saved logs — Ctrl-C to stop)\n`);
+  process.stderr.write(
+    `\n  \x1b[36m●\x1b[0m ccglass dashboard: \x1b[1m${dashUrl}\x1b[0m  (viewing saved logs — Ctrl-C to stop)\n`,
+  );
   if (opts.open) openBrowser(dashUrl);
 }
 
@@ -569,11 +634,15 @@ export async function main(argv) {
   const cmd = rest[0];
 
   if (rest.includes("-h") || rest.includes("--help")) return void process.stdout.write(HELP + "\n");
-  if (rest.includes("-v") || rest.includes("--version")) return void process.stdout.write(VERSION + "\n");
+  if (rest.includes("-v") || rest.includes("--version"))
+    return void process.stdout.write(VERSION + "\n");
 
   if (cmd === "view") return view(opts);
   if (cmd === "migrate") return migrate(opts);
-  if (cmd === "repack") { opts.session = rest[1]; return repack(opts); }
+  if (cmd === "repack") {
+    opts.session = rest[1];
+    return repack(opts);
+  }
   if (cmd === "rm") return rmCmd(rest[1], opts);
   if (cmd === "usage") return usageCmd(opts);
   if (cmd === "export") return exportEntry(rest[1], opts);
@@ -582,7 +651,7 @@ export async function main(argv) {
     const provider = resolveProvider(name, opts.provider, opts.envVar);
     if (provider.mode === "forward-proxy") {
       process.stderr.write(
-        `ccglass proxy: "${name}" is a forward-proxy provider; use \`ccglass ${name}\` instead.\n`
+        `ccglass proxy: "${name}" is a forward-proxy provider; use \`ccglass ${name}\` instead.\n`,
       );
       process.exit(1);
     }
@@ -591,7 +660,8 @@ export async function main(argv) {
   if (cmd === "run") {
     const dashIdx = rest.indexOf("--");
     const cmdArgs = dashIdx >= 0 ? rest.slice(dashIdx + 1) : rest.slice(1);
-    if (!cmdArgs.length) return void process.stderr.write("ccglass run: nothing to run. Use `ccglass run -- <cmd>`\n");
+    if (!cmdArgs.length)
+      return void process.stderr.write("ccglass run: nothing to run. Use `ccglass run -- <cmd>`\n");
     return wrap(cmdArgs[0], cmdArgs.slice(1), opts);
   }
 

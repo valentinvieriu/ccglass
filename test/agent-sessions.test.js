@@ -31,7 +31,9 @@ function recWithSession(sessionUuid) {
   return {
     request: {
       body: {
-        metadata: { user_id: JSON.stringify({ device_id: "d", account_uuid: "a", session_id: sessionUuid }) },
+        metadata: {
+          user_id: JSON.stringify({ device_id: "d", account_uuid: "a", session_id: sessionUuid }),
+        },
       },
     },
   };
@@ -45,7 +47,10 @@ test("claudeSessionId returns null when linkage is absent or malformed", () => {
   assert.equal(claudeSessionId({}), null);
   assert.equal(claudeSessionId({ request: { body: {} } }), null);
   assert.equal(claudeSessionId({ request: { body: { metadata: { user_id: "not json" } } } }), null);
-  assert.equal(claudeSessionId({ request: { body: { metadata: { user_id: JSON.stringify({}) } } } }), null);
+  assert.equal(
+    claudeSessionId({ request: { body: { metadata: { user_id: JSON.stringify({}) } } } }),
+    null,
+  );
 });
 
 test("titleFromTranscript prefers custom-title over ai-title and prompt", () => {
@@ -71,7 +76,10 @@ test("titleFromTranscript falls back to ai-title, then to first user prompt", ()
     // meta/command lines must be skipped — only a real prompt becomes the title.
     { type: "user", isMeta: true, message: { content: "meta noise" } },
     { type: "user", message: { content: "<local-command-stdout>ignored</local-command-stdout>" } },
-    { type: "user", message: { content: [{ type: "text", text: "actual question\nsecond line" }] } },
+    {
+      type: "user",
+      message: { content: [{ type: "text", text: "actual question\nsecond line" }] },
+    },
   ]);
   assert.equal(titleFromTranscript(promptFile), "actual question");
   fs.rmSync(root, { recursive: true, force: true });
@@ -103,7 +111,9 @@ test("buildTranscriptIndex maps every uuid across projects; empty when missing",
 
 test("resolveSessionName links records to the dominant transcript's title", () => {
   const root = mkProjectsRoot();
-  writeTranscript(root, "proj", "sess-main", [{ type: "custom-title", customTitle: "feature-all-token" }]);
+  writeTranscript(root, "proj", "sess-main", [
+    { type: "custom-title", customTitle: "feature-all-token" },
+  ]);
   writeTranscript(root, "proj", "sess-other", [{ type: "custom-title", customTitle: "stray" }]);
   const index = buildTranscriptIndex(root);
 
@@ -120,7 +130,9 @@ test("resolveSessionName links records to the dominant transcript's title", () =
 
 test("resolveSessionName caches per-file so a shared transcript is read once", () => {
   const root = mkProjectsRoot();
-  const file = writeTranscript(root, "proj", "sess-shared", [{ type: "custom-title", customTitle: "shared-name" }]);
+  const file = writeTranscript(root, "proj", "sess-shared", [
+    { type: "custom-title", customTitle: "shared-name" },
+  ]);
   const index = buildTranscriptIndex(root);
   const cache = new Map();
 

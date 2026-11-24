@@ -10,7 +10,13 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { localTimestamp, listSessionsMulti, loadSessionMulti, summarize, readEntryByIdMulti } from "./store.js";
+import {
+  localTimestamp,
+  listSessionsMulti,
+  loadSessionMulti,
+  summarize,
+  readEntryByIdMulti,
+} from "./store.js";
 import { getAdapter, detectFormat } from "./formats/index.js";
 import { globalRoot, readRoots } from "./paths.js";
 import { summarizeUsage } from "./usage.js";
@@ -24,13 +30,9 @@ function usageOf(rec) {
   return usage;
 }
 
-const CWD = process.env.CCGLASS_CWD
-  ? path.resolve(process.env.CCGLASS_CWD)
-  : process.cwd();
+const CWD = process.env.CCGLASS_CWD ? path.resolve(process.env.CCGLASS_CWD) : process.cwd();
 
-const ROOT = process.env.CCGLASS_ROOT
-  ? path.resolve(process.env.CCGLASS_ROOT)
-  : globalRoot(CWD);
+const ROOT = process.env.CCGLASS_ROOT ? path.resolve(process.env.CCGLASS_ROOT) : globalRoot(CWD);
 
 const ROOTS = readRoots(ROOT, CWD);
 

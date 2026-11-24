@@ -190,7 +190,9 @@ export function SessionMenu({
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+    const items = [
+      ...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+    ];
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
     const next =
       event.key === "Home"
@@ -226,7 +228,12 @@ export function SessionMenu({
             style={at}
             onKeyDown={onMenuKey}
           >
-            <button type="button" role="menuitem" className="menu-item" onClick={() => ask("reset")}>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => ask("reset")}
+            >
               <Eraser size={14} aria-hidden="true" />
               <span>
                 Clear requests…

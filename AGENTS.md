@@ -21,55 +21,66 @@ clearly. That is the product.
 
 ## Layout
 
-| Path | What lives there |
-|------|------------------|
-| `bin/ccglass.js` | CLI entry; calls `src/cli.js` |
-| `src/cli.js` | Commands (`claude`, `codex`, `proxy`, `run`, `view`, `usage`, `export`, `rm`, …) and option parsing |
-| `src/providers.js` | Per-client settings: env var, upstream, wire format |
-| `src/proxy.js` | Reverse proxy. Forwards the body byte-for-byte; rewrites `host`, strips `accept-encoding` |
-| `src/forward-proxy.js`, `src/ca.js` | CONNECT + TLS interception, used only for CodeBuddy |
-| `src/store.js`, `src/blobs.js` | Content-addressed capture storage (see [Storage format](README.md#storage-format)) |
-| `src/formats/` | Adapters that turn Anthropic and OpenAI payloads into one view model |
-| `src/server.js` | Dashboard server: static files from `web/`, REST under `/api`, live updates over SSE |
-| `src/mcp.js` | Self-inspection MCP tools injected into Claude Code |
-| `ui/` | Dashboard source: React 19, TypeScript, Tailwind 4 |
-| `ui/src/components/` | One component per view (`SessionsView`, `TimelineView`, `RequestDetail`, `FlowView`, `MessagesView`, `ToolsView`, `DiffView`, `UsageView`, …) |
-| `ui/src/lib/` | Pure helpers: formatting, timeline and replay models, filters |
-| `ui/src/useDashboard.ts` | The single REST and SSE hook |
-| `ui/src/styles.css` | All styling and the design tokens (OKLCH, light and dark) |
-| `test/` | Backend tests (`node:test`) |
-| `ui/tests/` | Frontend tests (Vitest, Testing Library, jsdom) |
-| `web/` | Build output. Generated and git-ignored; never edit or commit it |
-| `.ccglass/` | Local captures from `npm run dev`. Git-ignored |
-| `docs/` | Landing page, technical notes, and design evaluations |
+| Path                                | What lives there                                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bin/ccglass.js`                    | CLI entry; calls `src/cli.js`                                                                                                                 |
+| `src/cli.js`                        | Commands (`claude`, `codex`, `proxy`, `run`, `view`, `usage`, `export`, `rm`, …) and option parsing                                           |
+| `src/providers.js`                  | Per-client settings: env var, upstream, wire format                                                                                           |
+| `src/proxy.js`                      | Reverse proxy. Forwards the body byte-for-byte; rewrites `host`, strips `accept-encoding`                                                     |
+| `src/forward-proxy.js`, `src/ca.js` | CONNECT + TLS interception, used only for CodeBuddy                                                                                           |
+| `src/store.js`, `src/blobs.js`      | Content-addressed capture storage (see [Storage format](README.md#storage-format))                                                            |
+| `src/formats/`                      | Adapters that turn Anthropic and OpenAI payloads into one view model                                                                          |
+| `src/server.js`                     | Dashboard server: static files from `web/`, REST under `/api`, live updates over SSE                                                          |
+| `src/mcp.js`                        | Self-inspection MCP tools injected into Claude Code                                                                                           |
+| `ui/`                               | Dashboard source: React 19, TypeScript, Tailwind 4                                                                                            |
+| `ui/src/components/`                | One component per view (`SessionsView`, `TimelineView`, `RequestDetail`, `FlowView`, `MessagesView`, `ToolsView`, `DiffView`, `UsageView`, …) |
+| `ui/src/lib/`                       | Pure helpers: formatting, timeline and replay models, filters                                                                                 |
+| `ui/src/useDashboard.ts`            | The single REST and SSE hook                                                                                                                  |
+| `ui/src/styles.css`                 | All styling and the design tokens (OKLCH, light and dark)                                                                                     |
+| `test/`                             | Backend tests (`node:test`)                                                                                                                   |
+| `ui/tests/`                         | Frontend tests (Vitest, Testing Library, jsdom)                                                                                               |
+| `web/`                              | Build output. Generated and git-ignored; never edit or commit it                                                                              |
+| `.ccglass/`                         | Local captures from `vp run dev`. Git-ignored                                                                                                 |
 
 ## Commands
 
+Tooling is [Vite+](https://viteplus.dev) (`vp`), pinned as the `vite-plus` dev
+dependency. It provides Vite, Vitest, Oxlint and Oxfmt, all configured in
+`vite.config.ts`; there is no separate `vitest.config.ts`. `vp run <script>`
+runs a `package.json` script, while `vp test`, `vp check` and so on are the
+built-in commands.
+
 ```sh
-npm ci                # install
-npm run dev           # backend (watch) + Vite dashboard with hot reload
-npm run dev:server    # backend only
-npm run dev:ui        # Vite only, against a backend that is already running
-npm run build         # typecheck, then build ui/ into web/
-npm run typecheck     # tsc --noEmit
-npm test              # backend tests, then frontend tests
-npm run test:server   # node --test test/*.test.js test/*.test.mjs
-npm run test:ui       # vitest run
+vp install              # install (also installs the pre-commit hook)
+vp run dev              # backend (watch) + Vite dashboard with hot reload
+vp run dev:server       # backend only
+vp run dev:ui           # Vite only, against a backend that is already running
+vp run build            # typecheck, then build ui/ into web/
+vp run typecheck        # tsc --noEmit
+vp check                # format check, lint and type check together
+vp check --fix          # apply formatting and lint fixes
+vp run test             # backend tests, then frontend tests
+vp run test:server      # node --test test/*.test.js test/*.test.mjs
+vp test                 # frontend tests (Vitest); `vp test watch` to watch
 ```
 
 One test file: `node --test test/store.test.js` or
-`npx vitest run ui/tests/app.test.tsx`.
+`vp test ui/tests/app.test.tsx`.
 
-`npm run dev` listens on:
+The pre-commit hook (`.vite-hooks/pre-commit`) runs `vp staged`, which applies
+`vp check --fix` to staged files. Set `VP_GIT_HOOKS=0` to skip it for one
+commit.
 
-| Port | Service |
-|------|---------|
-| 5173 | Vite dashboard (hot reload); proxies `/api` to 6657 |
-| 6657 | Dashboard server, serving the built `web/` |
-| 6656 | Capture proxy; clients use `http://127.0.0.1:6656/openai/v1` |
+`vp run dev` listens on:
+
+| Port | Service                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| 5173 | Vite dashboard (hot reload); proxies `/api` to 6657                      |
+| 6657 | Dashboard server, serving the built `web/`                               |
+| 6656 | Capture proxy; clients use `http://127.0.0.1:6656/openai/v1`             |
 | 6655 | Expected upstream API (override with `CCGLASS_UPSTREAM` or `--upstream`) |
 
-Run `npm run build` once before `npm run dev` so port 6657 has something to
+Run `vp run build` once before `vp run dev` so port 6657 has something to
 serve.
 
 ## Rules that are easy to break
@@ -120,9 +131,9 @@ serve.
   - Surfaces are opaque: `--color-surface`, `-surface-subtle`, `-surface-muted`.
 - The typeface is bundled from `ui/src/fonts/` (keep its licence beside it).
 - Icons come from `lucide-react`.
-- Formatting follows the existing code: two-space indent, double quotes,
-  semicolons, lines up to about 100 columns. There is no linter config; match
-  the file you are in.
+- Oxfmt formats the code (two-space indent, double quotes, semicolons,
+  100 columns; the `fmt` block in `vite.config.ts`). Oxlint lints it with
+  type-aware rules. Run `vp check --fix` rather than formatting by hand.
 
 ## Working against a running dashboard
 
@@ -136,9 +147,9 @@ Playwright is not a project dependency. To drive the UI from a script, install
 
 ## Before finishing a change
 
-1. `npm run typecheck`
-2. The tests for the side you touched (`npm run test:ui` or
-   `npm run test:server`); `npm test` before a commit that touches both.
+1. `vp check` (format, lint and types) and `vp run typecheck`
+2. The tests for the side you touched (`vp test` or `vp run test:server`);
+   `vp run test` before a commit that touches both.
 3. For UI changes, look at the result in the browser in light and dark themes.
 4. Update `README.md` if behaviour that it describes changed, and
    `CHANGELOG.md` under "Unreleased" for user-visible changes.

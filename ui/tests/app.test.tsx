@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import App from "../src/App";
 import type { useDashboard } from "../src/useDashboard";
 import type { EntrySummary } from "../src/types";
@@ -17,7 +17,8 @@ const entries: EntrySummary[] = [1, 2].map((seq) => ({
 }));
 
 /** Puts the dashboard at an address, as a reload or a pasted link would. */
-const at = (hash: string) => window.history.replaceState(null, "", hash || window.location.pathname);
+const at = (hash: string) =>
+  window.history.replaceState(null, "", hash || window.location.pathname);
 /** Moves to an address the way the Back button does. */
 const go = (hash: string) =>
   act(() => {
@@ -176,9 +177,12 @@ describe("dashboard integration", () => {
     expect(screen.getByText("This saved session is empty")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete session…" }));
     fireEvent.click(
-      within(screen.getByRole("alertdialog", { name: "Delete this session?" })).getByRole("button", {
-        name: "Delete session",
-      }),
+      within(screen.getByRole("alertdialog", { name: "Delete this session?" })).getByRole(
+        "button",
+        {
+          name: "Delete session",
+        },
+      ),
     );
     expect(dashboard.changeCapture).toHaveBeenCalledWith("delete", "s");
   });
@@ -198,7 +202,10 @@ describe("dashboard integration", () => {
     expect(window.location.hash).toBe("#/s/s/r/1/messages");
     fireEvent.click(screen.getByRole("button", { name: "Next request" }));
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "response" })).toHaveAttribute("aria-selected", "true"),
+      expect(screen.getByRole("tab", { name: "response" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
     );
     // The address names the tab the request opened on, so a reload shows it again.
     expect(window.location.hash).toBe("#/s/s/r/2/response");
@@ -269,14 +276,24 @@ describe("dashboard integration", () => {
     vi.mocked(api).mockImplementation(async (path: string) =>
       path.startsWith("/api/requests")
         ? { entries: dashboard.entries }
-        : { added: [], removed: [], common: [], counts: { added: 0, removed: 0, common: 0, cachedInB: 0 } },
+        : {
+            added: [],
+            removed: [],
+            common: [],
+            counts: { added: 0, removed: 0, common: 0, cachedInB: 0 },
+          },
     );
     vi.mocked(dashboard.loadRecord).mockImplementation(async (id) => ({
       id,
       seq: Number(id.split("/")[1]),
       request: { method: "POST", url: "/v1/messages", body: { model: "test-model" } },
     }));
-    dashboard.entries = [1, 2, 3].map((seq) => ({ ...entries[0], id: `s/${seq}`, seq, nMessages: seq }));
+    dashboard.entries = [1, 2, 3].map((seq) => ({
+      ...entries[0],
+      id: `s/${seq}`,
+      seq,
+      nMessages: seq,
+    }));
     at("#/s/s/r/1");
     render(<App />);
     // The first request has nothing before it.
@@ -295,7 +312,9 @@ describe("dashboard integration", () => {
     expect(screen.getByRole("navigation", { name: "You are here" })).toHaveTextContent(
       /Sessions.*Request #3.*Compare with #2/,
     );
-    await waitFor(() => expect(api).toHaveBeenCalledWith("/api/diff?a=s%2F2&b=s%2F3", expect.anything()));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith("/api/diff?a=s%2F2&b=s%2F3", expect.anything()),
+    );
     // A click in the list replaces B; the baseline stays.
     fireEvent.click(screen.getByRole("button", { name: /test-model.*#1/s }));
     expect(screen.getByRole("combobox", { name: "A · baseline" })).toHaveValue("s/2");

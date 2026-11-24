@@ -139,11 +139,7 @@ export function useDashboard() {
     try {
       const all = await stats("all");
       const rows = [all, ...(await Promise.all((all.models || []).map(stats)))];
-      if (
-        mounted.current &&
-        generation === epoch.current &&
-        version === modelStatsVersion.current
-      )
+      if (mounted.current && generation === epoch.current && version === modelStatsVersion.current)
         patch({ modelStats: rows });
     } catch (error) {
       if (generation === epoch.current) report(error);

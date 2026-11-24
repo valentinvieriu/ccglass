@@ -16,15 +16,15 @@ and more**.
 
 ccglass answers questions you cannot answer from the agent's own output:
 
-| Question | What ccglass shows |
-|---|---|
-| What is actually in the context? | The full system prompt, every tool schema, messages injected by the harness, and the message history of any request |
-| What did this turn add? | Each request separates earlier turns from what is new; Compare diffs any two requests |
-| Where do the tokens go? | A per-request breakdown (system prompt, tool definitions, earlier turns, new content), the cache-hit rate, and totals per session and per model |
-| Why was it slow, or why did it fail? | Latency, time to first token, HTTP status and the raw response for every call |
-| What did the agent do, and in what order? | Session replay: prompts, tool calls with their results, and replies on one timeline |
-| Which tools does the model really use? | Tools offered against tools called, with the size of each definition |
-| How do I keep or share the evidence? | A separate recording per session; export as HTTP transcript, Markdown, JSON or HAR; copy any request as cURL |
+| Question                                  | What ccglass shows                                                                                                                              |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| What is actually in the context?          | The full system prompt, every tool schema, messages injected by the harness, and the message history of any request                             |
+| What did this turn add?                   | Each request separates earlier turns from what is new; Compare diffs any two requests                                                           |
+| Where do the tokens go?                   | A per-request breakdown (system prompt, tool definitions, earlier turns, new content), the cache-hit rate, and totals per session and per model |
+| Why was it slow, or why did it fail?      | Latency, time to first token, HTTP status and the raw response for every call                                                                   |
+| What did the agent do, and in what order? | Session replay: prompts, tool calls with their results, and replies on one timeline                                                             |
+| Which tools does the model really use?    | Tools offered against tools called, with the size of each definition                                                                            |
+| How do I keep or share the evidence?      | A separate recording per session; export as HTTP transcript, Markdown, JSON or HAR; copy any request as cURL                                    |
 
 That makes it useful when you are writing or tuning prompts and tools,
 debugging an agent that misbehaves, comparing models or providers on the same
@@ -101,25 +101,25 @@ token/cache numbers, and a turn-to-turn diff.
 
 ## Providers
 
-| `ccglass <provider>` or `--provider` | Wraps | Env var | Upstream | Format |
-|---|---|---|---|---|
-| `claude` | Claude Code | `ANTHROPIC_BASE_URL` | api.anthropic.com | Anthropic Messages |
-| `codex` | Codex | `OPENAI_BASE_URL` | api.openai.com | OpenAI Responses / Chat |
-| `deepseek` | DeepSeek-TUI dispatcher | `DEEPSEEK_BASE_URL` | api.deepseek.com | OpenAI Chat |
-| `deepseek-tui` | DeepSeek-TUI runtime | `DEEPSEEK_BASE_URL` | api.deepseek.com | OpenAI Chat |
-| `reasonix` | Reasonix | `DEEPSEEK_BASE_URL` | api.deepseek.com | OpenAI Chat |
-| `dsnix` | Reasonix (`dsnix` alias) | `DEEPSEEK_BASE_URL` | api.deepseek.com | OpenAI Chat |
-| `kimi` | Claude Code → Moonshot | `ANTHROPIC_BASE_URL` | api.moonshot.ai/anthropic | Anthropic Messages |
-| `opencode` | OpenCode | `OPENAI_BASE_URL` | auto (from env) | OpenAI Chat |
-| `qoder` | Qoder | `OPENAI_BASE_URL` | auto (from env) | OpenAI Chat |
-| `ollama` | any Ollama-backed client | `OPENAI_BASE_URL` | 127.0.0.1:11434 | OpenAI Chat |
-| `lmstudio` | any LM Studio-backed client | `OPENAI_BASE_URL` | 127.0.0.1:1234 | OpenAI Chat |
-| `openrouter` | any OpenRouter-backed client | `OPENAI_BASE_URL` | openrouter.ai/api | OpenAI Chat |
-| `glm` | any GLM/Zhipu-backed client | `OPENAI_BASE_URL` | auto (from env) | OpenAI Chat |
-| `bedrock` | Claude Code → AWS Bedrock | `ANTHROPIC_BEDROCK_BASE_URL` | auto (from env) | Anthropic Messages |
-| `vertex` | Claude Code → Google Vertex AI | `ANTHROPIC_BASE_URL` | auto (from env) | Anthropic Messages |
-| `codebuddy` | CodeBuddy (IDE / VS Code / JetBrains) | forward-proxy | copilot.tencent.com | OpenAI Chat |
-| `run --provider <p> -- <cmd>` | any client | per provider | per provider | per provider |
+| `ccglass <provider>` or `--provider` | Wraps                                 | Env var                      | Upstream                  | Format                  |
+| ------------------------------------ | ------------------------------------- | ---------------------------- | ------------------------- | ----------------------- |
+| `claude`                             | Claude Code                           | `ANTHROPIC_BASE_URL`         | api.anthropic.com         | Anthropic Messages      |
+| `codex`                              | Codex                                 | `OPENAI_BASE_URL`            | api.openai.com            | OpenAI Responses / Chat |
+| `deepseek`                           | DeepSeek-TUI dispatcher               | `DEEPSEEK_BASE_URL`          | api.deepseek.com          | OpenAI Chat             |
+| `deepseek-tui`                       | DeepSeek-TUI runtime                  | `DEEPSEEK_BASE_URL`          | api.deepseek.com          | OpenAI Chat             |
+| `reasonix`                           | Reasonix                              | `DEEPSEEK_BASE_URL`          | api.deepseek.com          | OpenAI Chat             |
+| `dsnix`                              | Reasonix (`dsnix` alias)              | `DEEPSEEK_BASE_URL`          | api.deepseek.com          | OpenAI Chat             |
+| `kimi`                               | Claude Code → Moonshot                | `ANTHROPIC_BASE_URL`         | api.moonshot.ai/anthropic | Anthropic Messages      |
+| `opencode`                           | OpenCode                              | `OPENAI_BASE_URL`            | auto (from env)           | OpenAI Chat             |
+| `qoder`                              | Qoder                                 | `OPENAI_BASE_URL`            | auto (from env)           | OpenAI Chat             |
+| `ollama`                             | any Ollama-backed client              | `OPENAI_BASE_URL`            | 127.0.0.1:11434           | OpenAI Chat             |
+| `lmstudio`                           | any LM Studio-backed client           | `OPENAI_BASE_URL`            | 127.0.0.1:1234            | OpenAI Chat             |
+| `openrouter`                         | any OpenRouter-backed client          | `OPENAI_BASE_URL`            | openrouter.ai/api         | OpenAI Chat             |
+| `glm`                                | any GLM/Zhipu-backed client           | `OPENAI_BASE_URL`            | auto (from env)           | OpenAI Chat             |
+| `bedrock`                            | Claude Code → AWS Bedrock             | `ANTHROPIC_BEDROCK_BASE_URL` | auto (from env)           | Anthropic Messages      |
+| `vertex`                             | Claude Code → Google Vertex AI        | `ANTHROPIC_BASE_URL`         | auto (from env)           | Anthropic Messages      |
+| `codebuddy`                          | CodeBuddy (IDE / VS Code / JetBrains) | forward-proxy                | copilot.tencent.com       | OpenAI Chat             |
+| `run --provider <p> -- <cmd>`        | any client                            | per provider                 | per provider              | per provider            |
 
 **Notes by provider:**
 
@@ -174,7 +174,7 @@ Output:
 
 Point your IDE's API base URL at the printed proxy address, then open the dashboard URL to watch every request in real time.
 
-**Limitation:** This only works when the IDE is configured to use *your own API key* with a custom base URL (BYOK mode). Cursor's built-in subscription models route through Cursor's own backend (`api2.cursor.sh`) and cannot be intercepted this way.
+**Limitation:** This only works when the IDE is configured to use _your own API key_ with a custom base URL (BYOK mode). Cursor's built-in subscription models route through Cursor's own backend (`api2.cursor.sh`) and cannot be intercepted this way.
 
 ## CodeBuddy
 
@@ -214,9 +214,9 @@ Output:
 }
 ```
 
-**JetBrains plugin** — go to *Settings → Appearance & Behavior → System Settings → HTTP Proxy*, select *Manual proxy configuration*, and set Host: `127.0.0.1`, Port: `9999`.
+**JetBrains plugin** — go to _Settings → Appearance & Behavior → System Settings → HTTP Proxy_, select _Manual proxy configuration_, and set Host: `127.0.0.1`, Port: `9999`.
 
-**Visual Studio plugin** — go to *Tools → Options → Environment → Network*, configure the proxy address.
+**Visual Studio plugin** — go to _Tools → Options → Environment → Network_, configure the proxy address.
 
 > Use the port number from the `ccglass codebuddy` output (or fix it with `--proxy-port 9999`).
 
@@ -330,18 +330,18 @@ else the first prompt — falling back to the capture timestamp otherwise. Use
 
 ### Options
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--provider <p>` | from command | Force format/env for `run` (`claude`/`codex`/`deepseek`/`reasonix`/`kimi`/`openai`) |
-| `--upstream <url>` | per provider | Override the upstream API |
-| `--port <n>` | auto | Dashboard port |
-| `--proxy-port <n>` | auto | Proxy port |
-| `--dir <path>` | `~/.ccglass/sessions/<full-path>-<hash>` | Where new logs are written; also used as `migrate` destination. Dashboard still reads `./.ccglass` in the project. |
-| `--no-open` | off | The dashboard opens in your browser by default; pass this to skip it |
-| `--no-mcp` | off | Don't inject ccglass's self-inspection tools into Claude Code |
-| `--no-settings-override` | off | Don't force Claude Code onto the proxy via `--settings` (for when a provider switcher set `ANTHROPIC_BASE_URL`) |
-| `--no-redact` | off | Keep auth tokens unmasked in saved logs |
-| `--env-var <name>` | per provider | Override the environment variable used to set the proxy URL |
+| Flag                     | Default                                  | Meaning                                                                                                            |
+| ------------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `--provider <p>`         | from command                             | Force format/env for `run` (`claude`/`codex`/`deepseek`/`reasonix`/`kimi`/`openai`)                                |
+| `--upstream <url>`       | per provider                             | Override the upstream API                                                                                          |
+| `--port <n>`             | auto                                     | Dashboard port                                                                                                     |
+| `--proxy-port <n>`       | auto                                     | Proxy port                                                                                                         |
+| `--dir <path>`           | `~/.ccglass/sessions/<full-path>-<hash>` | Where new logs are written; also used as `migrate` destination. Dashboard still reads `./.ccglass` in the project. |
+| `--no-open`              | off                                      | The dashboard opens in your browser by default; pass this to skip it                                               |
+| `--no-mcp`               | off                                      | Don't inject ccglass's self-inspection tools into Claude Code                                                      |
+| `--no-settings-override` | off                                      | Don't force Claude Code onto the proxy via `--settings` (for when a provider switcher set `ANTHROPIC_BASE_URL`)    |
+| `--no-redact`            | off                                      | Keep auth tokens unmasked in saved logs                                                                            |
+| `--env-var <name>`       | per provider                             | Override the environment variable used to set the proxy URL                                                        |
 
 ## Logs & secrets
 
@@ -421,17 +421,20 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
   data may contain secrets, so sanitize exports before sharing them.
 
 Run `node --test test/setup.test.mjs test/proxy-latency.test.js test/store.test.js test/server.test.js`
-to check these changes, or `npm test` for the complete upstream suite.
+to check these changes, or `vp run test` for the complete upstream suite.
 
 ## Development
 
 From this checkout (`vendor/ccglass` in `debug-proxy`), run:
 
 ```sh
-npm ci
-npm run build
-npm run dev
+vp install
+vp run build
+vp run dev
 ```
+
+Development uses [Vite+](https://viteplus.dev) (`vp`), which bundles Vite,
+Vitest, Oxlint and Oxfmt; all of them are configured in `vite.config.ts`.
 
 This starts the proxy at **http://127.0.0.1:6656**, the production dashboard at
 **http://127.0.0.1:6657**, and the hot-reloading React dashboard at
@@ -441,16 +444,17 @@ Keep the host API running and point clients at
 same ports. Browser requests from `http://localhost:5173` are allowed by default.
 
 Edit components in `ui/src/`; Vite updates the development dashboard automatically.
-`npm run build` compiles TypeScript and Tailwind into `web/`, which the existing
+`vp run build` compiles TypeScript and Tailwind into `web/`, which the existing
 server serves directly at port 6657. No CDN, remote fonts, or frontend server is
 needed in production. Node watch mode restarts the backend on server-source edits.
 Captures are saved in the ignored `.ccglass/` directory and survive restarts.
 Press Ctrl-C to stop.
 
-Use `npm run dev:ui` with an already-running backend, or `npm run dev:server`
-for the backend alone. `npm run typecheck`, `npm run test:ui`, and
-`npm run test:server` cover the frontend types, component/domain behavior,
-and backend separately. `npm test` runs both suites. Packaging builds `web/`
+Use `vp run dev:ui` with an already-running backend, or `vp run dev:server`
+for the backend alone. `vp check` checks formatting, lint rules and types;
+`vp check --fix` applies fixes, and the pre-commit hook does the same for
+staged files. `vp test` runs the frontend tests, `vp run test:server` the
+backend tests, and `vp run test` both. Packaging builds `web/`
 automatically; generated assets are not edited or committed.
 
 The UI uses small components in `ui/src/components`, one REST/SSE hook in
@@ -464,8 +468,8 @@ Override defaults with shell environment variables (`CCGLASS_UPSTREAM`,
 options, for example:
 
 ```sh
-npm run dev -- --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
-CCGLASS_CORS_ORIGINS='*' npm run dev
+vp run dev --upstream http://127.0.0.1:7777 --proxy-port 6666 --port 6667
+CCGLASS_CORS_ORIGINS='*' vp run dev
 ```
 
 ## Requirements
@@ -522,21 +526,11 @@ Thank you all. 🙏
 
 ## Related tools
 
-| Tool | What it does |
-|------|-------------|
-| **ccglass** ← you are here | See exactly what your coding agent sends to the model |
-| [**ccline**](https://github.com/jianshuo/ccline) | Type a thought at your zsh prompt — get an AI answer and run the command |
-| [**cclight**](https://github.com/jianshuo/cclight) | MacBook notch glow tells you when Claude Code is thinking |
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=jianshuo%2Fccglass&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jianshuo/ccglass&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jianshuo/ccglass&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=jianshuo/ccglass&type=date&legend=top-left" />
- </picture>
-</a>
+| Tool                                               | What it does                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------ |
+| **ccglass** ← you are here                         | See exactly what your coding agent sends to the model                    |
+| [**ccline**](https://github.com/jianshuo/ccline)   | Type a thought at your zsh prompt — get an AI answer and run the command |
+| [**cclight**](https://github.com/jianshuo/cclight) | MacBook notch glow tells you when Claude Code is thinking                |
 
 ## License
 

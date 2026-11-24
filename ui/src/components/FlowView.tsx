@@ -46,7 +46,8 @@ const WHERE: Record<FlowZone, [message: string, tool: string]> = {
   ],
 };
 
-const tokenText = (tokens: number | null) => (tokens == null ? "" : ` · ~${approxTokens(tokens)} tok`);
+const tokenText = (tokens: number | null) =>
+  tokens == null ? "" : ` · ~${approxTokens(tokens)} tok`;
 
 export default function FlowView({ record }: { record: RequestRecord }) {
   const flow = useMemo(() => buildFlow(record), [record]);
@@ -146,14 +147,14 @@ export default function FlowView({ record }: { record: RequestRecord }) {
       const tools = items.find((item) => item.kind === "tools")?.tools?.length ?? 0;
       const system = zone.all.some((item) => item.kind === "system");
       return (
-        [system && "System prompt", tools && `${tools} ${tools === 1 ? "tool" : "tools"}`].filter(Boolean).join(" + ") +
-        tokenText(sectionTokens("prefix"))
+        [system && "System prompt", tools && `${tools} ${tools === 1 ? "tool" : "tools"}`]
+          .filter(Boolean)
+          .join(" + ") + tokenText(sectionTokens("prefix"))
       );
     }
     if (zone.id === "carried")
       return `${count}${tokenText(sectionTokens("carried"))} · already answered`;
-    if (zone.id === "new")
-      return `${count}${tokenText(sectionTokens("new"))} · added by the agent`;
+    if (zone.id === "new") return `${count}${tokenText(sectionTokens("new"))} · added by the agent`;
     return [
       count,
       flow.outputTokens != null && `${flow.outputTokens.toLocaleString()} tok`,
@@ -240,17 +241,26 @@ export default function FlowView({ record }: { record: RequestRecord }) {
               </>
             );
             return (
-              <section key={zone.id} className="flow-zone" data-zone={zone.id} aria-label={zone.title}>
+              <section
+                key={zone.id}
+                className="flow-zone"
+                data-zone={zone.id}
+                aria-label={zone.title}
+              >
                 {zone.foldable ? (
                   <button
                     type="button"
                     className="flow-zone-head"
                     aria-expanded={zone.isOpen}
-                    onClick={() => setOpen((previous) => ({ ...previous, [zone.id]: !zone.isOpen }))}
+                    onClick={() =>
+                      setOpen((previous) => ({ ...previous, [zone.id]: !zone.isOpen }))
+                    }
                   >
                     <ChevronRight size={13} className="flow-chevron" aria-hidden="true" />
                     {heading}
-                    {!searching && <span className="flow-zone-action">{zone.isOpen ? "Hide" : "Show"}</span>}
+                    {!searching && (
+                      <span className="flow-zone-action">{zone.isOpen ? "Hide" : "Show"}</span>
+                    )}
                   </button>
                 ) : (
                   <div className="flow-zone-head">{heading}</div>

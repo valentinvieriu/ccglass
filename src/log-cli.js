@@ -1,13 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { legacyRoot } from "./paths.js";
-import { listSessions, hasCapturedLogs, readEntryByIdMulti, rmSession, loadSession } from "./store.js";
+import {
+  listSessions,
+  hasCapturedLogs,
+  readEntryByIdMulti,
+  rmSession,
+  loadSession,
+} from "./store.js";
 import { renderExport } from "./export.js";
 import { summarizeUsage } from "./usage.js";
 
 export function exportEntry(id, opts) {
   if (!id) {
-    process.stderr.write("ccglass export: missing entry id. Usage: ccglass export <session>/<seq>\n");
+    process.stderr.write(
+      "ccglass export: missing entry id. Usage: ccglass export <session>/<seq>\n",
+    );
     process.exit(1);
   }
   const rec = readEntryByIdMulti(opts.readRoots, id);
@@ -29,7 +37,9 @@ export function migrate(opts) {
   }
 
   if (!hasCapturedLogs(src)) {
-    process.stderr.write(`ccglass migrate: no .json logs in ./.ccglass (only empty session folders?)\n`);
+    process.stderr.write(
+      `ccglass migrate: no .json logs in ./.ccglass (only empty session folders?)\n`,
+    );
     process.exit(1);
   }
 
@@ -52,14 +62,14 @@ export function migrate(opts) {
   if (!files) {
     process.stderr.write(
       `ccglass migrate: no new files to copy (dest already has every ./.ccglass log from this project)\n` +
-      `  dest: ${dest}\n`
+        `  dest: ${dest}\n`,
     );
     process.exit(0);
   }
 
   process.stderr.write(
     `ccglass migrate: copied ${files} file(s) from ./.ccglass (${cwd}) → ${dest}\n` +
-    `  (only logs under the current project's ./.ccglass; other directories are untouched.)\n`
+      `  (only logs under the current project's ./.ccglass; other directories are untouched.)\n`,
   );
 }
 
@@ -99,8 +109,10 @@ export function usageCmd(opts) {
   const range = [s.range.from, s.range.to].filter(Boolean).join(" → ") || "—";
 
   const out = [];
-  out.push(`ccglass usage — ${s.sessionCount} sessions, ${fmt(s.requestCount)} requests measured` +
-    (s.unmeasured ? ` (${s.unmeasured} unmeasured)` : ""));
+  out.push(
+    `ccglass usage — ${s.sessionCount} sessions, ${fmt(s.requestCount)} requests measured` +
+      (s.unmeasured ? ` (${s.unmeasured} unmeasured)` : ""),
+  );
   out.push(`  range: ${range}`);
   out.push("");
   out.push("totals:");
@@ -113,9 +125,13 @@ export function usageCmd(opts) {
     out.push("");
     out.push("by model (sorted by input tokens):");
     const w = Math.max(8, ...s.byModel.map((m) => m.model.length));
-    out.push(`  ${"model".padEnd(w)}  ${"req".padStart(6)}  ${"input".padStart(10)}  ${"output".padStart(10)}  ${"cacheR".padStart(10)}  ${"cacheW".padStart(10)}`);
+    out.push(
+      `  ${"model".padEnd(w)}  ${"req".padStart(6)}  ${"input".padStart(10)}  ${"output".padStart(10)}  ${"cacheR".padStart(10)}  ${"cacheW".padStart(10)}`,
+    );
     for (const m of s.byModel) {
-      out.push(`  ${m.model.padEnd(w)}  ${fmt(m.requests).padStart(6)}  ${fmt(m.input).padStart(10)}  ${fmt(m.output).padStart(10)}  ${fmt(m.cacheRead).padStart(10)}  ${fmt(m.cacheWrite).padStart(10)}`);
+      out.push(
+        `  ${m.model.padEnd(w)}  ${fmt(m.requests).padStart(6)}  ${fmt(m.input).padStart(10)}  ${fmt(m.output).padStart(10)}  ${fmt(m.cacheRead).padStart(10)}  ${fmt(m.cacheWrite).padStart(10)}`,
+      );
     }
   }
 
@@ -134,12 +150,15 @@ export function usageCmd(opts) {
     const wId = Math.max(7, ...s.bySession.map((x) => x.session.length));
     const wName = showName ? Math.max(4, ...s.bySession.map((x) => nameOf(x).length)) : 0;
     // Left columns vary by mode; the numeric tail is identical for header + rows.
-    const lead = (name, id) => (showName ? `${name.padEnd(wName)}  ${id.padEnd(wId)}` : id.padEnd(wId));
+    const lead = (name, id) =>
+      showName ? `${name.padEnd(wName)}  ${id.padEnd(wId)}` : id.padEnd(wId);
     const tail = (req, input, output, cacheR, cacheW) =>
       `  ${req.padStart(6)}  ${input.padStart(10)}  ${output.padStart(10)}  ${cacheR.padStart(10)}  ${cacheW.padStart(10)}`;
     out.push(`  ${lead("name", "session")}${tail("req", "input", "output", "cacheR", "cacheW")}`);
     for (const x of s.bySession) {
-      out.push(`  ${lead(nameOf(x), x.session)}${tail(fmt(x.requests), fmt(x.input), fmt(x.output), fmt(x.cacheRead), fmt(x.cacheWrite))}`);
+      out.push(
+        `  ${lead(nameOf(x), x.session)}${tail(fmt(x.requests), fmt(x.input), fmt(x.output), fmt(x.cacheRead), fmt(x.cacheWrite))}`,
+      );
     }
   }
 
@@ -158,7 +177,10 @@ export function rmCmd(session, opts) {
   }
   let removed = 0;
   for (const root of opts.readRoots) {
-    if (fs.existsSync(path.join(root, session))) { rmSession(root, session); removed++; }
+    if (fs.existsSync(path.join(root, session))) {
+      rmSession(root, session);
+      removed++;
+    }
   }
   if (!removed) {
     process.stderr.write(`ccglass rm: session not found: ${session}\n`);

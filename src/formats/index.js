@@ -18,6 +18,7 @@ export function detectFormat(rec) {
   const b = rec?.request?.body || {};
   if (/\/responses|\/chat\/completions/.test(url)) return "openai";
   if (b && (b.input !== undefined || b.instructions !== undefined)) return "openai";
-  if (Array.isArray(b?.tools) && b.tools.some((t) => t?.type === "function" || t?.function)) return "openai";
+  if (Array.isArray(b?.tools) && b.tools.some((t) => t?.type === "function" || t?.function))
+    return "openai";
   return "anthropic";
 }

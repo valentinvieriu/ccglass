@@ -1,13 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { firstConversation, modelsLabel, sessionIdentity } from "../src/lib/session";
-import { HOME, formatRoute, parentRoute, parseRoute, routeSession, type Route } from "../src/lib/route";
+import {
+  HOME,
+  formatRoute,
+  parentRoute,
+  parseRoute,
+  routeSession,
+  type Route,
+} from "../src/lib/route";
 import type { EntrySummary, RequestRecord } from "../src/types";
 
 describe("the address of a place in the dashboard", () => {
   const places: [string, Route][] = [
     ["#/", { view: "sessions", tab: "sessions" }],
     ["#/usage", { view: "sessions", tab: "usage" }],
-    ["#/s/2026-11-23T23-34-32-264", { view: "session", session: "2026-11-23T23-34-32-264", tab: "replay" }],
+    [
+      "#/s/2026-11-23T23-34-32-264",
+      { view: "session", session: "2026-11-23T23-34-32-264", tab: "replay" },
+    ],
     ["#/s/a/usage", { view: "session", session: "a", tab: "usage" }],
     ["#/s/a/r/4", { view: "request", session: "a", seq: 4, tab: undefined }],
     ["#/s/a/r/4/messages", { view: "request", session: "a", seq: 4, tab: "messages" }],
@@ -62,7 +72,11 @@ describe("what tells one session from another", () => {
     model: "big",
     request: { body: { model: "big" } },
     parsed: {
-      view: { system: [], tools: [], messages: [{ role: "user", type: "text", text: "what time is it?" }] },
+      view: {
+        system: [],
+        tools: [],
+        messages: [{ role: "user", type: "text", text: "what time is it?" }],
+      },
     },
   };
 

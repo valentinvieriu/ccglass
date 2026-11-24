@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import RequestDetail from "../src/components/RequestDetail";
 import { buildMessages, countMessages, splitEnvelopes } from "../src/lib/messages";
 import {
@@ -79,7 +79,12 @@ const record: RequestRecord = {
           text: "<current_datetime>half past nine</current_datetime>\n\nfix the flaky test\n\n<canvas-context>closed</canvas-context>\nThis note explains the canvas.",
           cache: true,
         },
-        { label: "msg[1].assistant[0]", role: "assistant", type: "thinking", text: "Read the spec first." },
+        {
+          label: "msg[1].assistant[0]",
+          role: "assistant",
+          type: "thinking",
+          text: "Read the spec first.",
+        },
         { label: "msg[1].assistant[1]", role: "assistant", type: "text", text: "\n" },
         {
           label: "msg[1].assistant[2]",
@@ -89,7 +94,13 @@ const record: RequestRecord = {
           callId: "call-read",
           text: '{\n  "file_path": "/repo/spec.ts"\n}',
         },
-        { label: "msg[2].user[0]", role: "user", type: "tool_result", callId: "call-read", text: longOutput },
+        {
+          label: "msg[2].user[0]",
+          role: "user",
+          type: "tool_result",
+          callId: "call-read",
+          text: longOutput,
+        },
         {
           label: "msg[3].assistant[0]",
           role: "assistant",
@@ -120,7 +131,9 @@ const record: RequestRecord = {
     response: {
       stop_reason: "tool_use",
       usage: {},
-      content: [{ type: "tool_use", name: "Read", id: "call-next", input: { file_path: "/repo/cart.ts" } }],
+      content: [
+        { type: "tool_use", name: "Read", id: "call-next", input: { file_path: "/repo/cart.ts" } },
+      ],
     },
   },
 };
@@ -130,8 +143,16 @@ const message = (name: string) => screen.getByRole("article", { name });
 
 describe("messages model", () => {
   it("separates what was typed from the envelopes a harness wraps around it", () => {
-    expect(splitEnvelopes("<current_datetime>now</current_datetime>\n\nhello\n<canvas-context>x</canvas-context>\nnote")).toEqual([
-      { kind: "envelope", name: "current_datetime", text: "<current_datetime>now</current_datetime>" },
+    expect(
+      splitEnvelopes(
+        "<current_datetime>now</current_datetime>\n\nhello\n<canvas-context>x</canvas-context>\nnote",
+      ),
+    ).toEqual([
+      {
+        kind: "envelope",
+        name: "current_datetime",
+        text: "<current_datetime>now</current_datetime>",
+      },
       { kind: "text", text: "hello", human: true },
       { kind: "envelope", name: "canvas-context", text: "<canvas-context>x</canvas-context>" },
       { kind: "text", text: "note", human: false },
@@ -170,8 +191,18 @@ describe("messages model", () => {
           system: [],
           tools: [],
           messages: [
-            { label: "msg[1].user", role: "user", type: "message", text: "<system_reminder>be terse</system_reminder>" },
-            { label: "msg[2].developer", role: "developer", type: "message", text: "Follow the style guide." },
+            {
+              label: "msg[1].user",
+              role: "user",
+              type: "message",
+              text: "<system_reminder>be terse</system_reminder>",
+            },
+            {
+              label: "msg[2].developer",
+              role: "developer",
+              type: "message",
+              text: "Follow the style guide.",
+            },
             { label: "Call", type: "tool_use", name: "shell", callId: "c", text: "{}" },
             { label: "Result", type: "tool_result", callId: "c", text: "ok", role: "tool" },
           ],
@@ -203,9 +234,9 @@ describe("tools model", () => {
     ]);
     expect(params[3].values).toEqual(["one", "all"]);
     expect(schemaParams(record.parsed!.view!.tools[0].schema).params[1].fallback).toBe(2000);
-    expect(schemaType({ anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] })).toBe(
-      "string | string[]",
-    );
+    expect(
+      schemaType({ anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] }),
+    ).toBe("string | string[]");
     expect(schemaType({ const: "x" })).toBe('"x"');
     expect(schemaType(undefined)).toBe("any");
     expect(schemaParams("not a schema").params).toEqual([]);
@@ -218,7 +249,9 @@ describe("tools model", () => {
       "Not in the schema: replaceAll",
     ]);
     expect(callIssues(edit, "{oops")).toEqual(["Arguments are not valid JSON"]);
-    expect(callIssues({ type: "object", properties: { a: {} }, additionalProperties: true }, '{"b":1}')).toEqual([]);
+    expect(
+      callIssues({ type: "object", properties: { a: {} }, additionalProperties: true }, '{"b":1}'),
+    ).toEqual([]);
     expect(callIssues({ type: "object" }, '{"anything":1}')).toEqual([]);
   });
 
@@ -234,17 +267,29 @@ describe("tools model", () => {
     expect(model.settings).toEqual([["tool_choice", '{"type":"auto"}']]);
     expect(model.tools[0].summary).toBe("Reads a file.");
     expect(model.tools.reduce((total, tool) => total + tool.share, 0)).toBeCloseTo(1);
-    expect(sortTools(model.tools, "size").map((tool) => tool.name)).toEqual(["Edit", "Read", "Unused"]);
+    expect(sortTools(model.tools, "size").map((tool) => tool.name)).toEqual([
+      "Edit",
+      "Read",
+      "Unused",
+    ]);
     expect(sortTools(model.tools, "calls")[0].name).toBe("Read");
-    expect(model.tools.filter((tool) => matchesTool("unused", "", tool)).map((tool) => tool.name)).toEqual(["Unused"]);
-    expect(model.tools.filter((tool) => matchesTool("all", "ranges[].from", tool)).map((tool) => tool.name)).toEqual(["Edit"]);
+    expect(
+      model.tools.filter((tool) => matchesTool("unused", "", tool)).map((tool) => tool.name),
+    ).toEqual(["Unused"]);
+    expect(
+      model.tools
+        .filter((tool) => matchesTool("all", "ranges[].from", tool))
+        .map((tool) => tool.name),
+    ).toEqual(["Edit"]);
   });
 });
 
 describe("messages tab", () => {
   it("reads as a transcript: one entry per message with its position, role and size", () => {
     render(<RequestDetail record={record} />);
-    expect(within(screen.getByRole("tab", { name: /^messages/i })).getByText("5")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("tab", { name: /^messages/i })).getByText("5"),
+    ).toBeInTheDocument();
     openTab(/^messages/i);
     expect(screen.getAllByRole("article")).toHaveLength(5);
     const first = message("User · messages[0]");
@@ -254,7 +299,9 @@ describe("messages tab", () => {
     expect(within(message("Tool output · messages[2]")).getByText(/role user/)).toBeInTheDocument();
     expect(screen.getByText("Earlier turns")).toBeInTheDocument();
     expect(screen.getByText("New since the last reply")).toBeInTheDocument();
-    expect(screen.getByText(/whitespace/)).toHaveTextContent("Empty text block · 1 character of whitespace");
+    expect(screen.getByText(/whitespace/)).toHaveTextContent(
+      "Empty text block · 1 character of whitespace",
+    );
   });
 
   it("keeps harness envelopes folded beside the typed text until they are opened", () => {
@@ -263,9 +310,13 @@ describe("messages tab", () => {
     const first = message("User · messages[0]");
     const envelope = within(first).getByRole("button", { name: /current_datetime/ });
     expect(envelope).toHaveAttribute("aria-expanded", "false");
-    expect(within(first).queryByText("<current_datetime>half past nine</current_datetime>")).toBeNull();
+    expect(
+      within(first).queryByText("<current_datetime>half past nine</current_datetime>"),
+    ).toBeNull();
     fireEvent.click(envelope);
-    expect(within(first).getByText("<current_datetime>half past nine</current_datetime>")).toBeInTheDocument();
+    expect(
+      within(first).getByText("<current_datetime>half past nine</current_datetime>"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(within(first).getByText("<canvas-context>closed</canvas-context>")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
@@ -285,7 +336,9 @@ describe("messages tab", () => {
     expect(document.querySelector(".msg-flash")).toHaveTextContent('"file_path": "/repo/spec.ts"');
     const calls = message("Assistant · messages[3]");
     expect(within(calls).getByText("Called without arguments.")).toBeInTheDocument();
-    expect(within(calls).getByText("Not among the tools defined in this request")).toBeInTheDocument();
+    expect(
+      within(calls).getByText("Not among the tools defined in this request"),
+    ).toBeInTheDocument();
     expect(within(calls).getByText("no output captured")).toBeInTheDocument();
   });
 
@@ -293,10 +346,9 @@ describe("messages tab", () => {
     render(<RequestDetail record={record} />);
     openTab(/^messages/i);
     fireEvent.click(screen.getByRole("button", { name: /^Errors/ }));
-    expect(screen.getAllByRole("article").map((article) => article.getAttribute("aria-label"))).toEqual([
-      "Assistant · messages[3]",
-      "User · messages[4]",
-    ]);
+    expect(
+      screen.getAllByRole("article").map((article) => article.getAttribute("aria-label")),
+    ).toEqual(["Assistant · messages[3]", "User · messages[4]"]);
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     fireEvent.change(screen.getByRole("searchbox", { name: "Find in messages" }), {
       target: { value: "LINE 118" },
@@ -324,14 +376,20 @@ describe("tools tab", () => {
     render(<RequestDetail record={record} />);
     openTab(/^tools/i);
     const list = screen.getByRole("group", { name: "Tools offered" });
-    expect(within(list).getAllByRole("button").map((row) => row.getAttribute("aria-label")?.split(" · ").slice(0, 3))).toEqual([
+    expect(
+      within(list)
+        .getAllByRole("button")
+        .map((row) => row.getAttribute("aria-label")?.split(" · ").slice(0, 3)),
+    ).toEqual([
       ["Read", "Reads a file.", "2 calls"],
       ["Edit", "Replaces text in a file.", "1 call"],
       ["Unused", "No description", "not called"],
     ]);
     expect(screen.getByText(/Called but not defined in this request: Ghost/)).toBeInTheDocument();
     expect(screen.getByText(/tool_choice/)).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort tools" }), { target: { value: "size" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort tools" }), {
+      target: { value: "size" },
+    });
     expect(within(list).getAllByRole("button")[0]).toHaveAccessibleName(/^Edit/);
     fireEvent.change(screen.getByRole("searchbox", { name: "Find a tool or parameter" }), {
       target: { value: "old_string" },
@@ -345,7 +403,9 @@ describe("tools tab", () => {
     const pane = screen.getByRole("complementary", { name: "Tool definition" });
     expect(within(pane).getByText(/No description was sent/)).toBeInTheDocument();
     expect(within(pane).getByText("Takes no arguments.")).toBeInTheDocument();
-    expect(within(pane).getByText("The model has not called this tool so far.")).toBeInTheDocument();
+    expect(
+      within(pane).getByText("The model has not called this tool so far."),
+    ).toBeInTheDocument();
   });
 
   it("explains one tool: description, parameters, the calls made to it and the raw schema", () => {
@@ -360,7 +420,9 @@ describe("tools tab", () => {
     expect(within(pane).getByText("in this response")).toBeInTheDocument();
     expect(within(pane).queryByLabelText("Formatted JSON")).toBeNull();
     fireEvent.click(within(pane).getByRole("button", { name: /Input schema as sent/ }));
-    expect(within(pane).getByLabelText("Formatted JSON")).toHaveTextContent('"additionalProperties": false');
+    expect(within(pane).getByLabelText("Formatted JSON")).toHaveTextContent(
+      '"additionalProperties": false',
+    );
     fireEvent.keyDown(screen.getByRole("group", { name: "Tools offered" }), { key: "ArrowDown" });
     expect(within(pane).getByRole("heading", { name: "Edit" })).toBeInTheDocument();
     expect(within(pane).getByText("called 1× · 1 failed")).toBeInTheDocument();
@@ -378,7 +440,10 @@ describe("tools tab", () => {
     const pane = screen.getByRole("complementary", { name: "Tool definition" });
     expect(within(pane).getByRole("heading", { name: "Edit" })).toBeInTheDocument();
     fireEvent.click(within(pane).getByTitle("Open this call in Messages"));
-    expect(screen.getByRole("tab", { name: /^messages/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /^messages/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(document.querySelector(".msg-flash")).toHaveTextContent("Edit");
     // A call the model has only just asked for lives in the response.
     openTab(/^tools/i);

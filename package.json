@@ -2,7 +2,25 @@
   "name": "ccglass",
   "version": "1.1.2",
   "description": "See exactly what your coding agent sends to the model — a local logging reverse-proxy + web dashboard for Claude Code, Codex, DeepSeek-TUI, Reasonix, and Kimi. Just run `ccglass`.",
-  "type": "module",
+  "keywords": [
+    "anthropic",
+    "claude",
+    "claude-code",
+    "codex",
+    "dashboard",
+    "debug",
+    "deepseek",
+    "deepseek-tui",
+    "dsnix",
+    "inspector",
+    "kimi",
+    "llm",
+    "openai",
+    "prompt",
+    "proxy",
+    "reasonix"
+  ],
+  "license": "MIT",
   "bin": {
     "ccglass": "bin/ccglass.js"
   },
@@ -12,50 +30,26 @@
     "web",
     "README.md"
   ],
+  "type": "module",
   "scripts": {
     "dev": "node scripts/dev-ui.js",
     "dev:server": "node --watch scripts/dev.js",
-    "dev:ui": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev:ui": "vp dev",
+    "build": "tsc --noEmit && vp build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.js test/*.test.mjs && vitest run",
+    "check": "vp check",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "test": "node --test test/*.test.js test/*.test.mjs && vp test",
     "test:server": "node --test test/*.test.js test/*.test.mjs",
-    "test:ui": "vitest run",
+    "test:ui": "vp test",
+    "prepare": "vp config --no-agent",
     "prepack": "npm run build",
     "prepublishOnly": "npm test",
     "release": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",
     "release:major": "npm version major && git push --follow-tags"
   },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "anthropic",
-    "codex",
-    "openai",
-    "deepseek",
-    "deepseek-tui",
-    "reasonix",
-    "dsnix",
-    "kimi",
-    "proxy",
-    "debug",
-    "inspector",
-    "prompt",
-    "dashboard",
-    "llm"
-  ],
-  "engines": {
-    "node": ">=26"
-  },
-  "devEngines": {
-    "packageManager": {
-      "name": "npm",
-      "version": "12.2.3",
-      "onFail": "download"
-    }
-  },
-  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cross-spawn": "^7.0.6",
@@ -68,14 +62,27 @@
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
+    "@vitejs/plugin-react": "^6.3.0",
     "jsdom": "^27.2.0",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3",
-    "vite": "^7.2.2",
-    "vitest": "^4.0.13"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1",
+    "vite-plus": "1.5.1"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.2.3",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=26"
   }
 }

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -25,5 +25,25 @@ export default defineConfig({
         },
       },
     },
+  },
+  // Frontend tests only. Backend tests use node:test (`vp run test:server`).
+  // Paths are relative to `root` (ui/).
+  test: {
+    environment: "jsdom",
+    include: ["tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["tests/setup.ts"],
+    restoreMocks: true,
+    clearMocks: true,
+  },
+  fmt: {
+    printWidth: 100,
+    ignorePatterns: ["web/**", ".ccglass/**", "docs/superpowers/**", "package-lock.json"],
+  },
+  lint: {
+    ignorePatterns: ["web/**", ".ccglass/**"],
+    options: { typeAware: true, typeCheck: true },
+  },
+  staged: {
+    "*": "vp check --fix",
   },
 });

@@ -74,7 +74,9 @@ export function sessionIdentity(
   const lead = first ? requestLead(first) : null;
   return {
     requests: entries.length,
-    models: [...new Set(entries.map((entry) => entry.model).filter((model): model is string => !!model))].sort(),
+    models: [
+      ...new Set(entries.map((entry) => entry.model).filter((model): model is string => !!model)),
+    ].sort(),
     failed: entries.filter(isFailed).length,
     cancelled: entries.filter(isCancelled).length,
     prompt: lead?.kind === "prompt" ? lead.text : null,

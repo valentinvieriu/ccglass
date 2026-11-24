@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { RequestRecord, TimelineStep, EntrySummary } from "../src/types";
 import {
   buildTimeline,
@@ -90,7 +90,11 @@ describe("timeline normalization", () => {
     interrupted.parsed!.response = null;
     expect(flowSteps(interrupted).at(-1)?.text).toContain("client disconnected");
     // The client hanging up closes the turn as cancelled, not as an error.
-    expect(flowSteps(interrupted).at(-1)).toMatchObject({ kind: "stop", cancelled: true, latest: true });
+    expect(flowSteps(interrupted).at(-1)).toMatchObject({
+      kind: "stop",
+      cancelled: true,
+      latest: true,
+    });
     const flow = buildFlow(interrupted);
     expect(flow.items.at(-1)).toMatchObject({
       zone: "response",
@@ -111,7 +115,10 @@ describe("timeline normalization", () => {
       cacheRead: null,
     });
     interrupted.response = { error: "socket hang up" };
-    expect(flowSteps(interrupted).at(-1)).toMatchObject({ kind: "stop", text: "error: socket hang up" });
+    expect(flowSteps(interrupted).at(-1)).toMatchObject({
+      kind: "stop",
+      text: "error: socket hang up",
+    });
     expect(flowSteps(interrupted).at(-1)?.cancelled).toBeUndefined();
     expect(buildFlow(interrupted).items.at(-1)?.kind).toBe("failed");
   });
@@ -135,11 +142,17 @@ describe("timeline normalization", () => {
     second.parsed!.view!.messages = [{ type: "tool_result", callId: "call_1", text: "/workspace" }];
     third.parsed!.view!.messages = [...second.parsed!.view!.messages];
     expect(buildTimeline([first, second, third])[0].result).toMatchObject({
-      text: "/workspace", entryId: "session/2", seq: 2,
+      text: "/workspace",
+      entryId: "session/2",
+      seq: 2,
     });
-    third.parsed!.view!.messages = [{ type: "tool_result", callId: "call_1", text: "Updated output" }];
+    third.parsed!.view!.messages = [
+      { type: "tool_result", callId: "call_1", text: "Updated output" },
+    ];
     expect(buildTimeline([first, second, third])[0].result).toMatchObject({
-      text: "Updated output", entryId: "session/3", seq: 3,
+      text: "Updated output",
+      entryId: "session/3",
+      seq: 3,
     });
   });
   it("deduplicates repeated context but keeps blocks changed beyond their prefix", () => {
@@ -151,8 +164,16 @@ describe("timeline normalization", () => {
     ).toContain("reminder");
   });
   it("previews arbitrary tool arguments with meaningful field names and handles non-object inputs", () => {
-    expect(smartSummary({ kind: "tool_use", name: "read_item", text: '{"id":"evidence-2"}' })).toBe("id: evidence-2");
-    expect(smartSummary({ kind: "tool_use", name: "raise_point", text: '{"section":"evidence.saw","text":"Check the wait time","strict":true}' })).toBe("section: evidence.saw · text: Check the wait time · strict: true");
+    expect(smartSummary({ kind: "tool_use", name: "read_item", text: '{"id":"evidence-2"}' })).toBe(
+      "id: evidence-2",
+    );
+    expect(
+      smartSummary({
+        kind: "tool_use",
+        name: "raise_point",
+        text: '{"section":"evidence.saw","text":"Check the wait time","strict":true}',
+      }),
+    ).toBe("section: evidence.saw · text: Check the wait time · strict: true");
     for (const text of ["null", "[]", '"raw input"', "not json"])
       expect(smartSummary({ kind: "tool_use", name: "custom", text })).toBe(text);
   });
@@ -160,14 +181,23 @@ describe("timeline normalization", () => {
     const captured = record("1", [{ type: "provider-extension", payload: "opaque value" }]);
     captured.parsed!.response!.stop_reason = "completed";
     const steps = flowSteps(captured);
-    expect(steps.filter((step) => step.latest).map((step) => step.kind)).toEqual(["assistant", "stop"]);
-    expect(steps.find((step) => step.label === "provider-extension")?.text).toContain('"payload": "opaque value"');
+    expect(steps.filter((step) => step.latest).map((step) => step.kind)).toEqual([
+      "assistant",
+      "stop",
+    ]);
+    expect(steps.find((step) => step.label === "provider-extension")?.text).toContain(
+      '"payload": "opaque value"',
+    );
     captured.parsed!.response!.content = [{ type: "text" }];
     expect(flowSteps(captured).find((step) => step.kind === "assistant")?.text).toBe("");
     captured.parsed!.response = null;
     captured.response = null;
     captured.error = "transport failure";
-    expect(flowSteps(captured).at(-1)).toMatchObject({ kind: "stop", latest: true, text: "error: transport failure" });
+    expect(flowSteps(captured).at(-1)).toMatchObject({
+      kind: "stop",
+      latest: true,
+      text: "error: transport failure",
+    });
   });
 });
 describe("flow and replay models", () => {
@@ -179,15 +209,39 @@ describe("flow and replay models", () => {
     response: { status: 200 },
     latencyMs: 1000,
     parsed: {
-      view: { system: [{ text: "Be brief." }], tools: [{ name: "Bash", description: "Run a command" }], messages },
+      view: {
+        system: [{ text: "Be brief." }],
+        tools: [{ name: "Bash", description: "Run a command" }],
+        messages,
+      },
       response: { model: "local", content },
       usageStats: { totalInput: 400, output: 20, cacheRead: 100 },
     },
   });
-  const prompt = { role: "user", type: "message", text: "<current_datetime>now</current_datetime>\n\nRun the tests\n\n<canvas-context>none</canvas-context>\n\nThis reference identifies the message." };
-  const reminder = { role: "user", type: "message", text: "<system_reminder>\nStay in the sandbox.\n</system_reminder>" };
-  const call = { role: "assistant", type: "tool_use", name: "Bash", callId: "client-1", text: '{"command":"npm test"}' };
-  const result = { role: "tool", type: "tool_result", callId: "client-1", text: "1 failed", isError: true };
+  const prompt = {
+    role: "user",
+    type: "message",
+    text: "<current_datetime>now</current_datetime>\n\nRun the tests\n\n<canvas-context>none</canvas-context>\n\nThis reference identifies the message.",
+  };
+  const reminder = {
+    role: "user",
+    type: "message",
+    text: "<system_reminder>\nStay in the sandbox.\n</system_reminder>",
+  };
+  const call = {
+    role: "assistant",
+    type: "tool_use",
+    name: "Bash",
+    callId: "client-1",
+    text: '{"command":"npm test"}',
+  };
+  const result = {
+    role: "tool",
+    type: "tool_result",
+    callId: "client-1",
+    text: "1 failed",
+    isError: true,
+  };
 
   it("finds what the person typed inside harness envelopes and leaves ordinary markup alone", () => {
     expect(humanText(prompt.text)).toBe("Run the tests");
@@ -201,18 +255,39 @@ describe("flow and replay models", () => {
     const flow = buildFlow(
       chat("2", [reminder, prompt, call, result], [{ type: "text", text: "One test fails." }]),
     );
-    const zones = (zone: string) => flow.items.filter((item) => item.zone === zone).map((item) => item.name);
+    const zones = (zone: string) =>
+      flow.items.filter((item) => item.zone === zone).map((item) => item.name);
     expect(zones("prefix")).toEqual(["System prompt", "Tool definitions"]);
     expect(zones("carried")).toEqual(["Harness", "User"]);
     expect(zones("new")).toEqual(["Bash"]);
     expect(zones("response")).toEqual(["Assistant"]);
     const bash = flow.items.find((item) => item.name === "Bash")!;
-    expect(bash).toMatchObject({ status: "error", output: "1 failed", callNumber: 1, description: "Run a command" });
-    expect(flow.items.find((item) => item.name === "User")).toMatchObject({ human: "Run the tests", injected: false });
-    expect(flow.sections.map((section) => section.id)).toEqual(["system", "tools", "carried", "new"]);
+    expect(bash).toMatchObject({
+      status: "error",
+      output: "1 failed",
+      callNumber: 1,
+      description: "Run a command",
+    });
+    expect(flow.items.find((item) => item.name === "User")).toMatchObject({
+      human: "Run the tests",
+      injected: false,
+    });
+    expect(flow.sections.map((section) => section.id)).toEqual([
+      "system",
+      "tools",
+      "carried",
+      "new",
+    ]);
     expect(flow.sections.reduce((total, section) => total + section.share, 0)).toBeCloseTo(1);
-    expect(flow.sections.reduce((total, section) => total + section.tokens!, 0)).toBeGreaterThan(395);
-    expect(flow).toMatchObject({ inputTokens: 400, estimated: false, cacheRead: 100, outputTokens: 20 });
+    expect(flow.sections.reduce((total, section) => total + section.tokens!, 0)).toBeGreaterThan(
+      395,
+    );
+    expect(flow).toMatchObject({
+      inputTokens: 400,
+      estimated: false,
+      cacheRead: 100,
+      outputTokens: 20,
+    });
     const first = buildFlow(chat("1", [prompt], []));
     expect(first.items.filter((item) => item.zone === "carried")).toHaveLength(0);
     expect(first.items.filter((item) => item.zone === "new")).toHaveLength(1);
@@ -221,16 +296,42 @@ describe("flow and replay models", () => {
   it("leaves out an empty text block that only accompanies a tool call", () => {
     const blank = { role: "assistant", type: "text", text: " " };
     const flow = buildFlow(
-      chat("2", [prompt, blank, call, result], [
-        { type: "text", text: "\n" },
-        { type: "tool_use", id: "next", name: "Bash", input: { command: "ls" } },
-      ]),
+      chat(
+        "2",
+        [prompt, blank, call, result],
+        [
+          { type: "text", text: "\n" },
+          { type: "tool_use", id: "next", name: "Bash", input: { command: "ls" } },
+        ],
+      ),
     );
     expect(flow.items.filter((item) => item.kind === "assistant")).toHaveLength(0);
-    expect(flow.items.filter((item) => item.kind === "tool").map((item) => item.id)).toEqual(["m-2", "r-1"]);
+    expect(flow.items.filter((item) => item.kind === "tool").map((item) => item.id)).toEqual([
+      "m-2",
+      "r-1",
+    ]);
     // Ids still follow the position in the request, so Messages can be linked to.
-    const records = { "session/2": chat("2", [prompt], [{ type: "text", text: " " }, { type: "tool_use", id: "c", name: "Bash", input: {} }]) };
-    const entries = [{ id: "session/2", session: "session", seq: 2, ts: 2, model: "local", status: 200, nMessages: 1 }] as EntrySummary[];
+    const records = {
+      "session/2": chat(
+        "2",
+        [prompt],
+        [
+          { type: "text", text: " " },
+          { type: "tool_use", id: "c", name: "Bash", input: {} },
+        ],
+      ),
+    };
+    const entries = [
+      {
+        id: "session/2",
+        session: "session",
+        seq: 2,
+        ts: 2,
+        model: "local",
+        status: 200,
+        nMessages: 1,
+      },
+    ] as EntrySummary[];
     const replay = buildReplay(entries, records, buildTimeline(Object.values(records)), false);
     expect(replay.lines.map((line) => line.item.kind)).toEqual(["system", "tools", "user", "tool"]);
     // A reply with nothing in it at all is still worth a row.
@@ -240,13 +341,21 @@ describe("flow and replay models", () => {
 
   it("titles the preview without saying the same thing twice", () => {
     const heading = (step: TimelineStep) => previewHeading(stepItem(step, "x", "new"));
-    expect(heading({ kind: "user", text: "Run the tests" })).toEqual({ eyebrow: "", title: "User prompt" });
+    expect(heading({ kind: "user", text: "Run the tests" })).toEqual({
+      eyebrow: "",
+      title: "User prompt",
+    });
     expect(heading({ kind: "user", text: reminder.text })).toEqual({
       eyebrow: "Sent in the user role · system-reminder",
       title: "Harness message",
     });
-    expect(heading({ kind: "assistant", text: "Done." })).toEqual({ eyebrow: "", title: "Assistant message" });
-    expect(heading({ kind: "assistant", label: "refusal", text: "{}" }).title).toBe("Assistant message · refusal");
+    expect(heading({ kind: "assistant", text: "Done." })).toEqual({
+      eyebrow: "",
+      title: "Assistant message",
+    });
+    expect(heading({ kind: "assistant", label: "refusal", text: "{}" }).title).toBe(
+      "Assistant message · refusal",
+    );
     expect(heading({ kind: "tool_use", name: "Bash", text: '{"command":"ls"}' })).toEqual({
       eyebrow: "Tool call",
       title: "Bash",
@@ -263,7 +372,11 @@ describe("flow and replay models", () => {
   });
 
   it("recognises a tool call that was streamed without an id once the client names it", () => {
-    const first = chat("1", [prompt], [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }]);
+    const first = chat(
+      "1",
+      [prompt],
+      [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }],
+    );
     const second = chat("2", [prompt, call, result], [{ type: "text", text: "One test fails." }]);
     expect(buildTimeline([first]).filter((row) => row.kind === "tool_use")).toHaveLength(1);
     const rows = buildTimeline([first, second]);
@@ -278,10 +391,31 @@ describe("flow and replay models", () => {
 
   it("groups the replay by prompt and folds runs of setup requests", () => {
     const probe = (seq: number, status: number): EntrySummary =>
-      ({ id: "session/" + seq, session: "session", seq, ts: seq, method: "GET", url: "/v1/models", status }) as EntrySummary;
+      ({
+        id: "session/" + seq,
+        session: "session",
+        seq,
+        ts: seq,
+        method: "GET",
+        url: "/v1/models",
+        status,
+      }) as EntrySummary;
     const entry = (seq: number): EntrySummary =>
-      ({ id: "session/" + seq, session: "session", seq, ts: seq, model: "local", status: 200, nMessages: 1, latencyMs: 1000 }) as EntrySummary;
-    const first = chat("3", [prompt], [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }]);
+      ({
+        id: "session/" + seq,
+        session: "session",
+        seq,
+        ts: seq,
+        model: "local",
+        status: 200,
+        nMessages: 1,
+        latencyMs: 1000,
+      }) as EntrySummary;
+    const first = chat(
+      "3",
+      [prompt],
+      [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }],
+    );
     first.parsed!.response!.stop_reason = "tool_calls";
     const second = chat("4", [prompt, call, result], [{ type: "text", text: "One test fails." }]);
     second.parsed!.response!.stop_reason = "length";
@@ -289,9 +423,19 @@ describe("flow and replay models", () => {
     const entries = [probe(1, 404), probe(2, 200), entry(3), entry(4), probe(5, 200)];
     const replay = buildReplay(entries, records, buildTimeline([first, second]), false);
     expect(replay.lines.map((line) => line.item.kind)).toEqual([
-      "request", "request", "system", "tools", "user", "tool", "assistant", "stop", "request",
+      "request",
+      "request",
+      "system",
+      "tools",
+      "user",
+      "tool",
+      "assistant",
+      "stop",
+      "request",
     ]);
-    expect([...replay.folds.values()]).toMatchObject([{ label: "2 setup requests", sub: "GET /v1/models · 1 failed" }]);
+    expect([...replay.folds.values()]).toMatchObject([
+      { label: "2 setup requests", sub: "GET /v1/models · 1 failed" },
+    ]);
     expect(replay.lines.filter((line) => line.fold).map((line) => line.entry.seq)).toEqual([1, 2]);
     expect(replay.lines.at(-1)!.fold).toBeUndefined();
     const asked = replay.lines.find((line) => line.prompt)!;

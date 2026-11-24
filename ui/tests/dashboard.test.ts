@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDashboard } from "../src/useDashboard";
 import type { EntrySummary, RequestRecord, SessionsSnapshot } from "../src/types";
 
@@ -220,7 +220,8 @@ describe("dashboard live state", () => {
     ];
     mockApi((path) => {
       calls.push(path);
-      if (path === "/api/sessions") return { sessions: ["live", "old"], live: "live", controllable: true };
+      if (path === "/api/sessions")
+        return { sessions: ["live", "old"], live: "live", controllable: true };
       if (path.startsWith("/api/requests?session=")) return { entries: listed(path.split("=")[1]) };
       if (path.startsWith("/api/request/"))
         return {
@@ -228,7 +229,11 @@ describe("dashboard live state", () => {
           model: "big",
           request: { body: { model: "big" } },
           parsed: {
-            view: { system: [], tools: [], messages: [{ role: "user", type: "text", text: "first words" }] },
+            view: {
+              system: [],
+              tools: [],
+              messages: [{ role: "user", type: "text", text: "first words" }],
+            },
           },
         };
       return stats;

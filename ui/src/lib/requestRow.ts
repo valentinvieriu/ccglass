@@ -37,10 +37,13 @@ function findLead(record: RequestRecord): RequestLead | null {
   if (typed) return { kind: "prompt", text: oneLine(typed.human ?? typed.summary, 140) };
 
   const names = new Map<string, string>();
-  for (const step of sent) if (isCall(step) && step.callId) names.set(step.callId, step.name || "tool");
+  for (const step of sent)
+    if (isCall(step) && step.callId) names.set(step.callId, step.name || "tool");
   const outputs = added.filter((step) => step.kind === "tool_result");
   if (outputs.length) {
-    const tools = [...new Set(outputs.map((step) => names.get(step.callId ?? "") ?? "tool output"))];
+    const tools = [
+      ...new Set(outputs.map((step) => names.get(step.callId ?? "") ?? "tool output")),
+    ];
     return { kind: "tools", text: tools.join(", ") };
   }
   const harness = users.at(-1);

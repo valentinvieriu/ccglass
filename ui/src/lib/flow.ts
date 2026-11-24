@@ -135,7 +135,13 @@ export function stepItem(
       chars: step.text.length,
     };
   if (step.kind === "stop")
-    return { ...base, kind: "failed", name: "Request failed", summary: step.text, chars: step.text.length };
+    return {
+      ...base,
+      kind: "failed",
+      name: "Request failed",
+      summary: step.text,
+      chars: step.text.length,
+    };
   if (step.kind === "system")
     return {
       ...base,
@@ -153,7 +159,8 @@ export function stepItem(
       chars: step.text.length,
       tools: step.tools,
     };
-  const thinking = step.kind === "thinking" || (step.kind === "assistant" && step.label === "reasoning");
+  const thinking =
+    step.kind === "thinking" || (step.kind === "assistant" && step.label === "reasoning");
   if (thinking)
     return {
       ...base,

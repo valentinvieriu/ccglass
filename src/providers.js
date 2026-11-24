@@ -80,9 +80,9 @@ export const PROVIDERS = {
     command: "opencode",
     format: "openai",
     envVar: "OPENAI_BASE_URL",
-    upstream: "auto",       // resolved from current env at run time
+    upstream: "auto", // resolved from current env at run time
     autoUpstream: true,
-    noSettings: true,       // OpenCode doesn't use --settings flag like Claude Code
+    noSettings: true, // OpenCode doesn't use --settings flag like Claude Code
   },
   qoder: {
     label: "Qoder",
@@ -161,16 +161,32 @@ export const PROVIDERS = {
   },
 };
 
-export const PICKABLE = ["claude", "codex", "deepseek", "reasonix", "kimi", "opencode", "qoder", "codebuddy"]; // shown in the no-arg picker
+export const PICKABLE = [
+  "claude",
+  "codex",
+  "deepseek",
+  "reasonix",
+  "kimi",
+  "opencode",
+  "qoder",
+  "codebuddy",
+]; // shown in the no-arg picker
 
 // Resolve a provider from a CLI token (e.g. "claude"), falling back to a custom
 // command wrapped under an explicit --provider.
 export function resolveProvider(name, providerOverride, envVarOverride) {
-  const base = providerOverride && PROVIDERS[providerOverride]
-    ? { ...PROVIDERS[providerOverride] }
-    : PROVIDERS[name]
-      ? { ...PROVIDERS[name] }
-      : { label: name, command: name, format: "anthropic", envVar: "ANTHROPIC_BASE_URL", upstream: "https://api.anthropic.com" };
+  const base =
+    providerOverride && PROVIDERS[providerOverride]
+      ? { ...PROVIDERS[providerOverride] }
+      : PROVIDERS[name]
+        ? { ...PROVIDERS[name] }
+        : {
+            label: name,
+            command: name,
+            format: "anthropic",
+            envVar: "ANTHROPIC_BASE_URL",
+            upstream: "https://api.anthropic.com",
+          };
   if (providerOverride && PROVIDERS[providerOverride] && name) base.command = name;
   if (envVarOverride) base.envVar = envVarOverride;
   return base;

@@ -6,7 +6,7 @@ import { openai } from "./openai.js";
 export function normUsageReasonix(u = {}) {
   const hit = u.prompt_cache_hit_tokens ?? 0;
   const miss = u.prompt_cache_miss_tokens ?? 0;
-  const prompt = u.prompt_tokens ?? u.input_tokens ?? (hit + miss) ?? 0;
+  const prompt = u.prompt_tokens ?? u.input_tokens ?? hit + miss ?? 0;
   const cached =
     hit ||
     u.cache_read_input_tokens ||

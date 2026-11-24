@@ -14,7 +14,10 @@ test("requestBlocks captures system/messages/tools with cache flags", () => {
 });
 
 test("diffRequests finds added blocks across a turn", () => {
-  const a = { system: [{ text: "sys" }], messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] };
+  const a = {
+    system: [{ text: "sys" }],
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  };
   const b = {
     system: [{ text: "sys" }],
     messages: [

@@ -62,7 +62,9 @@ export function matchesReplayFilter(
   if (filter === "failed") return entryFailed(line.entry, records[line.entry.id]);
   if (filter === "cancelled") return entryCancelled(line.entry, records[line.entry.id]);
   if (filter === "toolError")
-    return (line.item.kind === "tool" || line.item.kind === "output") && line.item.status === "error";
+    return (
+      (line.item.kind === "tool" || line.item.kind === "output") && line.item.status === "error"
+    );
   return matchesFilter(filter, line.item);
 }
 
@@ -126,11 +128,7 @@ function requestItem(
   const failed = entryFailed(entry, record);
   const url = record?.request?.url ?? entry.url;
   const method = record?.request?.method ?? entry.method ?? "Request";
-  const text = [
-    `${method} ${url || ""}`.trim(),
-    status != null ? `HTTP ${status}` : "",
-    detail,
-  ]
+  const text = [`${method} ${url || ""}`.trim(), status != null ? `HTTP ${status}` : "", detail]
     .filter(Boolean)
     .join("\n");
   return {

@@ -11,7 +11,14 @@ function flatten(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((p) => (typeof p === "string" ? p : p.text ?? p.input_text ?? p.output_text ?? (p.type ? `[${p.type}]` : JSON.stringify(p))))
+      .map((p) =>
+        typeof p === "string"
+          ? p
+          : (p.text ??
+            p.input_text ??
+            p.output_text ??
+            (p.type ? `[${p.type}]` : JSON.stringify(p))),
+      )
       .join("");
   }
   return JSON.stringify(content);
@@ -30,7 +37,11 @@ function prettyArgs(args) {
 
 function toolView(t) {
   const f = t.function || t;
-  return { name: f.name, description: f.description || "", schema: f.parameters || f.input_schema || {} };
+  return {
+    name: f.name,
+    description: f.description || "",
+    schema: f.parameters || f.input_schema || {},
+  };
 }
 
 function isResponses(body = {}) {
@@ -58,19 +69,28 @@ export const openai = {
         : [];
       const input = Array.isArray(body.input) ? body.input : body.input != null ? [body.input] : [];
       const messages = input.map((item, i) => {
-        if (typeof item === "string") return { label: `input[${i}]`, role: "user", type: "message", text: item, cache: false };
+        if (typeof item === "string")
+          return { label: `input[${i}]`, role: "user", type: "message", text: item, cache: false };
         if (item.type === "function_call") {
           return {
-            label: `input[${i}].function_call`, role: "assistant", type: "tool_use",
-            name: item.name, callId: item.call_id || item.id,
-            text: prettyArgs(item.arguments), cache: false,
+            label: `input[${i}].function_call`,
+            role: "assistant",
+            type: "tool_use",
+            name: item.name,
+            callId: item.call_id || item.id,
+            text: prettyArgs(item.arguments),
+            cache: false,
           };
         }
         if (item.type === "function_call_output") {
           return {
-            label: `input[${i}].function_call_output`, role: "tool", type: "tool_result",
-            callId: item.call_id, isError: false,
-            text: typeof item.output === "string" ? item.output : JSON.stringify(item.output, null, 2),
+            label: `input[${i}].function_call_output`,
+            role: "tool",
+            type: "tool_result",
+            callId: item.call_id,
+            isError: false,
+            text:
+              typeof item.output === "string" ? item.output : JSON.stringify(item.output, null, 2),
             cache: false,
           };
         }
@@ -102,33 +122,64 @@ export const openai = {
     const system = all
       .map((m, i) => ({ m, i }))
       .filter(({ m }) => m.role === "system" || m.role === "developer")
-      .map(({ m, i }) => ({ label: `system[${i}].${m.role}`, text: flatten(m.content), cache: false }));
+      .map(({ m, i }) => ({
+        label: `system[${i}].${m.role}`,
+        text: flatten(m.content),
+        cache: false,
+      }));
     const messages = all
       .map((m, i) => ({ m, i }))
       .filter(({ m }) => m.role !== "system" && m.role !== "developer")
       .flatMap(({ m, i }) => {
         // A tool result: pair it back to the assistant tool_call by id.
         if (m.role === "tool") {
-          return [{
-            label: `msg[${i}].tool`, role: "tool", type: "tool_result",
-            callId: m.tool_call_id, isError: false, text: flatten(m.content), cache: false,
-          }];
+          return [
+            {
+              label: `msg[${i}].tool`,
+              role: "tool",
+              type: "tool_result",
+              callId: m.tool_call_id,
+              isError: false,
+              text: flatten(m.content),
+              cache: false,
+            },
+          ];
         }
         // An assistant turn may carry several tool calls; expand one block each.
         if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
           const out = [];
           const said = flatten(m.content);
-          if (said) out.push({ label: `msg[${i}].${m.role}`, role: m.role, type: "message", text: said, cache: false });
+          if (said)
+            out.push({
+              label: `msg[${i}].${m.role}`,
+              role: m.role,
+              type: "message",
+              text: said,
+              cache: false,
+            });
           m.tool_calls.forEach((tc, ti) => {
             const f = tc.function || {};
             out.push({
-              label: `msg[${i}].${m.role}.tool_call[${ti}]`, role: m.role, type: "tool_use",
-              name: f.name, callId: tc.id, text: prettyArgs(f.arguments), cache: false,
+              label: `msg[${i}].${m.role}.tool_call[${ti}]`,
+              role: m.role,
+              type: "tool_use",
+              name: f.name,
+              callId: tc.id,
+              text: prettyArgs(f.arguments),
+              cache: false,
             });
           });
           return out;
         }
-        return [{ label: `msg[${i}].${m.role}`, role: m.role, type: "message", text: flatten(m.content), cache: false }];
+        return [
+          {
+            label: `msg[${i}].${m.role}`,
+            role: m.role,
+            type: "message",
+            text: flatten(m.content),
+            cache: false,
+          },
+        ];
       });
     return { system, messages, tools };
   },
@@ -137,8 +188,19 @@ export const openai = {
     const v = this.view(body);
     return [
       ...v.system.map((s) => ({ kind: "system", label: s.label, text: s.text, cache: false })),
-      ...v.messages.map((m) => ({ kind: "message", label: m.label, type: m.type, text: m.text, cache: false })),
-      ...v.tools.map((t) => ({ kind: "tool", label: `tool:${t.name}`, text: t.description, cache: false })),
+      ...v.messages.map((m) => ({
+        kind: "message",
+        label: m.label,
+        type: m.type,
+        text: m.text,
+        cache: false,
+      })),
+      ...v.tools.map((t) => ({
+        kind: "tool",
+        label: `tool:${t.name}`,
+        text: t.description,
+        cache: false,
+      })),
     ];
   },
 
@@ -176,10 +238,15 @@ export const openai = {
       // Responses API events
       if (typeof ev.type === "string" && ev.type.startsWith("response.")) {
         if (ev.type === "response.output_text.delta") text += ev.delta || "";
-        else if (ev.type === "response.reasoning_summary_text.delta") reasoningText += ev.delta || "";
-        else if (ev.type === "response.output_text.done") { /* text complete; deltas already accumulated */ }
-        else if (ev.type === "response.output_item.added" && ev.item?.type === "function_call") {
-          toolCalls[ev.output_index ?? ev.item.id ?? Object.keys(toolCalls).length] = { name: ev.item.name, args: "" };
+        else if (ev.type === "response.reasoning_summary_text.delta")
+          reasoningText += ev.delta || "";
+        else if (ev.type === "response.output_text.done") {
+          /* text complete; deltas already accumulated */
+        } else if (ev.type === "response.output_item.added" && ev.item?.type === "function_call") {
+          toolCalls[ev.output_index ?? ev.item.id ?? Object.keys(toolCalls).length] = {
+            name: ev.item.name,
+            args: "",
+          };
         } else if (ev.type === "response.function_call_arguments.delta") {
           const k = ev.output_index ?? ev.item_id ?? Object.keys(toolCalls).pop();
           if (toolCalls[k]) toolCalls[k].args += ev.delta || "";
@@ -245,7 +312,8 @@ function normUsage(u = {}) {
   return {
     input_tokens: u.input_tokens ?? u.prompt_tokens ?? 0,
     output_tokens: u.output_tokens ?? u.completion_tokens ?? 0,
-    cache_read_input_tokens: u.input_tokens_details?.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0,
+    cache_read_input_tokens:
+      u.input_tokens_details?.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0,
     cache_creation_input_tokens: 0,
   };
 }
@@ -261,7 +329,9 @@ function normalizeFinal(json, normalizeUsage = normUsage) {
           : "";
         if (summaryText) content.push({ type: "reasoning", text: summaryText });
       } else if (item.type === "message") {
-        for (const c of item.content || []) if (c.text || c.output_text) content.push({ type: "text", text: c.text ?? c.output_text });
+        for (const c of item.content || [])
+          if (c.text || c.output_text)
+            content.push({ type: "text", text: c.text ?? c.output_text });
       } else if (item.type === "function_call") {
         let input;
         try {
@@ -272,7 +342,13 @@ function normalizeFinal(json, normalizeUsage = normUsage) {
         content.push({ type: "tool_use", name: item.name, input });
       }
     }
-    return { streamed: false, model: json.model, stop_reason: json.status, usage: normalizeUsage(json.usage), content };
+    return {
+      streamed: false,
+      model: json.model,
+      stop_reason: json.status,
+      usage: normalizeUsage(json.usage),
+      content,
+    };
   }
   // Chat Completions non-streaming
   if (json.choices) {
@@ -288,7 +364,13 @@ function normalizeFinal(json, normalizeUsage = normUsage) {
       }
       content.push({ type: "tool_use", name: tc.function?.name, input });
     }
-    return { streamed: false, model: json.model, stop_reason: json.choices[0]?.finish_reason, usage: normalizeUsage(json.usage), content };
+    return {
+      streamed: false,
+      model: json.model,
+      stop_reason: json.choices[0]?.finish_reason,
+      usage: normalizeUsage(json.usage),
+      content,
+    };
   }
   if (json.error) return { streamed: false, error: json.error, usage: {} };
   return { streamed: false, raw: JSON.stringify(json) };

@@ -30,9 +30,10 @@ export function buildTimeline(records: RequestRecord[]): TimelineRow[] {
         const tool = toolRows.get(step.callId);
         const previous = tool?.result ?? orphanResults.get(step.callId);
         // Re-sent history must not move an unchanged output to a later request.
-        const result = previous && previous.text === step.text && previous.isError === step.isError
-          ? previous
-          : { ...step, entryId: record.id, seq: record.seq };
+        const result =
+          previous && previous.text === step.text && previous.isError === step.isError
+            ? previous
+            : { ...step, entryId: record.id, seq: record.seq };
         if (tool) {
           tool.result = result;
           continue;
@@ -274,13 +275,11 @@ export function smartSummary(step: TimelineStep) {
     if (name === "Bash") return oneLine(input.command, 140);
     if (name === "Read") {
       const loc = oneLine(input.file_path, 140);
-      const end = typeof input.offset === "number" && typeof input.limit === "number" && input.limit
-        ? `-${input.offset + input.limit}`
-        : "";
-      const rng =
-        typeof input.offset === "number"
-          ? `:${input.offset}${end}`
+      const end =
+        typeof input.offset === "number" && typeof input.limit === "number" && input.limit
+          ? `-${input.offset + input.limit}`
           : "";
+      const rng = typeof input.offset === "number" ? `:${input.offset}${end}` : "";
       return loc + rng;
     }
     if (name === "Edit" || name === "Write" || name === "NotebookEdit")
@@ -306,7 +305,10 @@ export function smartSummary(step: TimelineStep) {
     );
     if (fields.length)
       return oneLine(
-        fields.slice(0, 3).map(([key, value]) => `${key}: ${value}`).join(" · "),
+        fields
+          .slice(0, 3)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(" · "),
         180,
       );
     return oneLine(step.text, 180);

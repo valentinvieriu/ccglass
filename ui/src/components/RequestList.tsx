@@ -73,7 +73,9 @@ export const RequestList = memo(function RequestList({
       filterInput.current?.focus();
       return;
     }
-    const listed = [...event.currentTarget.querySelectorAll<HTMLElement>(".request-row")].filter((element) => !element.closest("details:not([open])"));
+    const listed = [...event.currentTarget.querySelectorAll<HTMLElement>(".request-row")].filter(
+      (element) => !element.closest("details:not([open])"),
+    );
     const target = keyTarget(event.key, listed, document.activeElement as HTMLElement);
     if (!target) return;
     event.preventDefault();
@@ -89,7 +91,15 @@ export const RequestList = memo(function RequestList({
       showModel={showModel}
       // While comparing, the two picks are what is on screen, not the open request.
       selected={comparing ? picks.includes(entry.id) : selected === entry.id}
-      pick={!comparing ? undefined : picks[0] === entry.id ? "A" : picks[1] === entry.id ? "B" : undefined}
+      pick={
+        !comparing
+          ? undefined
+          : picks[0] === entry.id
+            ? "A"
+            : picks[1] === entry.id
+              ? "B"
+              : undefined
+      }
       onSelect={onSelect}
     />
   );

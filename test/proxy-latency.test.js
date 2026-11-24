@@ -13,7 +13,9 @@ test("proxy records startedAt and finishedAt for latency", async () => {
   const upstreamReady = new Promise((resolve) => {
     upstream = http.createServer((req, res) => {
       let body = "";
-      req.on("data", (c) => { body += c; });
+      req.on("data", (c) => {
+        body += c;
+      });
       req.on("end", () => {
         res.writeHead(200, { "content-type": "application/json" });
         setTimeout(() => {

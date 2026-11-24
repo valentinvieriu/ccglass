@@ -9,13 +9,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import {
-  ArrowRight,
-  ChevronRight,
-  LoaderCircle,
-  MessageSquare,
-  Trash2,
-} from "lucide-react";
+import { ArrowRight, ChevronRight, LoaderCircle, MessageSquare, Trash2 } from "lucide-react";
 import type { EntrySummary, RequestRecord } from "../types";
 import { keyTarget, matchesFilter, matchesQuery } from "../lib/flow";
 import { fmtClock, fmtMs } from "../lib/format";
@@ -212,7 +206,9 @@ export default function TimelineView({
   const latencyOf = (entry: EntrySummary) => records[entry.id]?.latencyMs ?? entry.latencyMs;
   const slowest = Math.max(1, ...windowEntries.map((entry) => latencyOf(entry) ?? 0));
   const hasContent = !!windowEntries.length;
-  const failedRequests = windowEntries.filter((entry) => entryFailed(entry, records[entry.id])).length;
+  const failedRequests = windowEntries.filter((entry) =>
+    entryFailed(entry, records[entry.id]),
+  ).length;
   const cancelledRequests = windowEntries.filter((entry) =>
     entryCancelled(entry, records[entry.id]),
   ).length;
@@ -285,8 +281,8 @@ export default function TimelineView({
         {facts}
         {windowRecords.length < windowEntries.length && (
           <span className="timeline-progress" role="status">
-            {windowRecords.length.toLocaleString()} / {windowEntries.length.toLocaleString()} requests
-            loaded
+            {windowRecords.length.toLocaleString()} / {windowEntries.length.toLocaleString()}{" "}
+            requests loaded
           </span>
         )}
         <div className="timeline-toolbar timeline-toolbar-inline">
@@ -374,8 +370,8 @@ export default function TimelineView({
           )}
           {hasContent && entries.length >= limit && (
             <p className="timeline-legend-note">
-              Showing up to {limit.toLocaleString()} requests per page. Session exports include every
-              request.
+              Showing up to {limit.toLocaleString()} requests per page. Session exports include
+              every request.
             </p>
           )}
           {hasContent && (
@@ -391,8 +387,8 @@ export default function TimelineView({
                     : value === "cancelled"
                       ? cancelledRequests
                       : (value === "all" ? conversation : replay.lines).filter((line) =>
-                        matchesReplayFilter(value, line, records),
-                      ).length,
+                          matchesReplayFilter(value, line, records),
+                        ).length,
               }))}
               filter={filter}
               onFilter={setFilter}
@@ -483,7 +479,9 @@ export default function TimelineView({
               <ItemPreview
                 item={selected?.item}
                 where={selected?.where}
-                facts={selected ? entryFacts(selected.entry, records[selected.entry.id]) : undefined}
+                facts={
+                  selected ? entryFacts(selected.entry, records[selected.entry.id]) : undefined
+                }
                 onClose={() => setPreviewOpen(false)}
                 actions={
                   selected && (

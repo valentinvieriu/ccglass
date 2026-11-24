@@ -33,13 +33,16 @@ test("prepareSpawn runs Windows cmd shims through cmd.exe", () => {
     "codex",
     ["-c", "model_providers.gaisf_responses.base_url='%CODEX_BASE_URL%'"],
     env,
-    "win32"
+    "win32",
   );
 
   assert.equal(prepared.command, env.ComSpec);
   assert.deepEqual(prepared.args.slice(0, 2), ["/d", "/c"]);
   assert.equal(prepared.windowsVerbatimArguments, true);
-  assert.match(prepared.args[2], new RegExp(`^call "${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" `));
+  assert.match(
+    prepared.args[2],
+    new RegExp(`^call "${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" `),
+  );
   assert.match(prepared.args[2], /"model_providers\.gaisf_responses\.base_url='%CODEX_BASE_URL%'"/);
 });
 
@@ -50,5 +53,12 @@ test("prepareSpawn runs PowerShell shims through powershell.exe", () => {
   const prepared = prepareSpawn("codex", ["--version"], env, "win32");
 
   assert.equal(prepared.command, "powershell.exe");
-  assert.deepEqual(prepared.args, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file, "--version"]);
+  assert.deepEqual(prepared.args, [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    file,
+    "--version",
+  ]);
 });

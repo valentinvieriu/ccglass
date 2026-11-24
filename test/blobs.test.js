@@ -33,7 +33,11 @@ test("readBlob round-trips the stored value", () => {
 
 function makeRec(body) {
   return {
-    id: "S/0001", session: "S", seq: 1, ts: 123, format: "anthropic",
+    id: "S/0001",
+    session: "S",
+    seq: 1,
+    ts: 123,
+    format: "anthropic",
     request: { headers: { "x-api-key": "masked" }, body },
     response: { status: 200, raw: "ok" },
   };
@@ -53,10 +57,14 @@ test("pack -> unpack preserves startedAt", () => {
 test("pack -> unpack is lossless: anthropic system array + tools + messages", () => {
   const root = tmpRoot();
   const body = {
-    model: "claude-opus-4-7", max_tokens: 1024,
+    model: "claude-opus-4-7",
+    max_tokens: 1024,
     system: [{ type: "text", text: "sys" }],
     tools: [{ name: "t", description: "d" }],
-    messages: [{ role: "user", content: "hi" }, { role: "assistant", content: "yo" }],
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "yo" },
+    ],
   };
   const rec = makeRec(body);
   const manifest = packRecord(root, rec);
@@ -67,7 +75,8 @@ test("pack -> unpack is lossless: anthropic system array + tools + messages", ()
 test("pack -> unpack is lossless: openai input, no tools, system as string", () => {
   const root = tmpRoot();
   const body = {
-    model: "gpt-x", system: "plain string",
+    model: "gpt-x",
+    system: "plain string",
     input: [{ role: "user", content: "hi" }],
   };
   const rec = makeRec(body);
@@ -124,25 +133,31 @@ test("rmSession deletes the session and GCs only orphaned blobs", () => {
   const root = tmpRoot();
   const shared = { role: "user", content: "shared" };
   const mk = (uniqueText) => ({
-    request: { method: "POST", url: "/v1/messages", headers: {},
-      body: { model: "m", tools: [], messages: [shared, { role: "user", content: uniqueText }] } },
+    request: {
+      method: "POST",
+      url: "/v1/messages",
+      headers: {},
+      body: { model: "m", tools: [], messages: [shared, { role: "user", content: uniqueText }] },
+    },
   });
 
   const a = new Store({ root });
-  const ra = a.add(mk("only-A")); ra.response = { status: 200 }; a.update(ra);
-  const sharedRef = JSON.parse(
-    fs.readFileSync(path.join(root, a.sessionId, "0001.json"), "utf8")
-  ).request.messages[0];
+  const ra = a.add(mk("only-A"));
+  ra.response = { status: 200 };
+  a.update(ra);
+  const sharedRef = JSON.parse(fs.readFileSync(path.join(root, a.sessionId, "0001.json"), "utf8"))
+    .request.messages[0];
 
   const b = new Store({ root });
   b.sessionId = a.sessionId + "-B";
   b.sessionDir = path.join(root, b.sessionId);
   fs.mkdirSync(b.sessionDir, { recursive: true });
-  const rb = b.add(mk("only-B")); rb.response = { status: 200 }; b.update(rb);
+  const rb = b.add(mk("only-B"));
+  rb.response = { status: 200 };
+  b.update(rb);
 
-  const onlyARef = JSON.parse(
-    fs.readFileSync(path.join(root, a.sessionId, "0001.json"), "utf8")
-  ).request.messages[1]; // index 1 is the unique "only-A" message
+  const onlyARef = JSON.parse(fs.readFileSync(path.join(root, a.sessionId, "0001.json"), "utf8"))
+    .request.messages[1]; // index 1 is the unique "only-A" message
 
   rmSession(root, a.sessionId);
 

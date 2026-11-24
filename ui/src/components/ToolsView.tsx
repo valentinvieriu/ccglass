@@ -161,9 +161,7 @@ function ToolPane({
           <span>Tool definition{category ? ` · ${category}` : ""}</span>
           <h3 className="mono">{tool.name}</h3>
         </div>
-        <span
-          className={`badge ${tool.failed ? "badge-error" : "badge-muted"}`}
-        >
+        <span className={`badge ${tool.failed ? "badge-error" : "badge-muted"}`}>
           {tool.calls.length
             ? `called ${tool.calls.length}×${tool.failed ? ` · ${tool.failed} failed` : ""}`
             : "not called"}
@@ -205,7 +203,9 @@ function ToolPane({
           <div className="flow-block-heading">
             <h4>
               Parameters
-              {top.length ? ` · ${top.length}${required ? ` · ${required} required` : " · all optional"}` : ""}
+              {top.length
+                ? ` · ${top.length}${required ? ` · ${required} required` : " · all optional"}`
+                : ""}
             </h4>
           </div>
           {tool.params.length ? (
@@ -382,7 +382,9 @@ export default function ToolsView({
         <span>
           <strong>{model.tools.length.toLocaleString()}</strong>{" "}
           {model.tools.length === 1 ? "tool" : "tools"} offered ·{" "}
-          {model.tokens != null ? `~${approxTokens(model.tokens)} tok` : fmtApproxTokens(model.chars)}
+          {model.tokens != null
+            ? `~${approxTokens(model.tokens)} tok`
+            : fmtApproxTokens(model.chars)}
           {model.inputShare != null && ` · ${share(model.inputShare)} of what was sent`}
         </span>
         <span>
