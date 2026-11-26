@@ -88,6 +88,7 @@ export function rowStatus(
 ): { label: string; tone: "error" | "pending" | "cancelled" } | null {
   if (isCancelled(entry)) return { label: "cancelled", tone: "cancelled" };
   if (entry.error != null) return { label: "error", tone: "error" };
+  if (entry.streaming) return { label: "streaming", tone: "pending" };
   if (entry.pending) return { label: "pending", tone: "pending" };
   if (entry.status == null) return { label: "no status", tone: "pending" };
   return entry.status >= 400 ? { label: String(entry.status), tone: "error" } : null;

@@ -133,6 +133,13 @@ export class Store extends EventEmitter {
     this.emit("update", rec);
   }
 
+  // A reply still streaming in: show it on the dashboard without rewriting
+  // the capture file. The finished (or broken-off) reply is saved by update().
+  progress(rec) {
+    if (this.recordGenerations.get(rec) !== (this.generations.get(rec.session) || 0)) return;
+    this.emit("update", rec);
+  }
+
   // Write the v2 manifest (request content split into content-addressed blobs).
   _persist(rec) {
     const manifest = packRecord(this.root, rec);
@@ -179,7 +186,8 @@ export function summarize(rec) {
     nToolUse,
     status: rec.response?.status ?? null,
     error: rec.response?.error ?? null,
-    pending: !rec.response,
+    pending: !rec.response || !!rec.response.streaming,
+    streaming: !!rec.response?.streaming,
   };
 }
 

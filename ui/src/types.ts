@@ -14,6 +14,8 @@ export interface EntrySummary {
   status?: number | null;
   latencyMs?: number | null;
   pending?: boolean;
+  /** The reply is arriving now; the record holds what came so far. */
+  streaming?: boolean;
   error?: unknown;
   nMessages?: number;
   nTools?: number;

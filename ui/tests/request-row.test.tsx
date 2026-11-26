@@ -115,6 +115,10 @@ describe("what a request was for", () => {
       label: "pending",
       tone: "pending",
     });
+    expect(rowStatus(entry(1, { status: null, pending: true, streaming: true }))).toEqual({
+      label: "streaming",
+      tone: "pending",
+    });
   });
 
   it("names a request in one line for a dropdown, the way its row names it", () => {

@@ -102,6 +102,17 @@ describe("timeline normalization", () => {
       name: "Cancelled",
       summary: "The client closed the connection before the response finished",
     });
+    // A reply cancelled mid-thought keeps its reasoning and still ends cancelled.
+    const stopped = record("4");
+    stopped.response = { status: 200, error: "client disconnected" };
+    stopped.parsed!.response = {
+      content: [{ type: "reasoning", text: "Wait, let me reconsider." }],
+      error: "client disconnected",
+    };
+    expect(buildFlow(stopped).items.slice(-2)).toMatchObject([
+      { kind: "thinking", text: "Wait, let me reconsider." },
+      { kind: "cancelled" },
+    ]);
     // The zeros reported for a response that never finished are not a measurement.
     interrupted.parsed = {
       ...interrupted.parsed,
@@ -563,5 +574,51 @@ describe("request outcomes and comparison picks", () => {
     // With no baseline yet, it is the request before the clicked one.
     expect(comparePick(entries, [], "s/3")).toEqual(["s/2", "s/3"]);
     expect(comparePick(entries, [], "s/1")).toEqual(["", "s/1"]);
+  });
+});
+
+describe("reasoning sent back by the client", () => {
+  const thought = "The user wants me to review the goal.";
+  const chat = (seq: number, messages: any[], content: any[]): RequestRecord => ({
+    id: `session/${seq}`,
+    seq,
+    request: { url: "/v1/chat/completions", headers: {}, body: { model: "qwen3" } },
+    response: { status: 200 },
+    parsed: { view: { system: [], tools: [], messages }, response: { content } },
+  });
+  const first = chat(
+    1,
+    [{ role: "user", type: "message", text: "Review it." }],
+    [{ type: "reasoning", text: thought }],
+  );
+  const second = chat(
+    2,
+    [
+      { role: "user", type: "message", text: "Review it." },
+      {
+        role: "assistant",
+        type: "reasoning",
+        label: "msg[1].assistant.reasoning_content",
+        text: thought,
+      },
+    ],
+    [{ type: "reasoning", text: "Now the tool has answered." }],
+  );
+
+  it("shows a thought once in the replay, where the model produced it", () => {
+    const thinking = buildTimeline([first, second]).filter((row) => row.kind === "thinking");
+    expect(thinking.map((row) => [row.seq, row.text])).toEqual([
+      [1, thought],
+      [2, "Now the tool has answered."],
+    ]);
+  });
+
+  it("names the field that carried it back", () => {
+    const sent = buildFlow(second).items.find(
+      (item) => item.kind === "thinking" && item.zone !== "response",
+    );
+    expect(sent?.tags).toContain("reasoning_content");
+    const returned = buildFlow(second).items.find((item) => item.zone === "response");
+    expect(returned?.tags).not.toContain("reasoning_content");
   });
 });

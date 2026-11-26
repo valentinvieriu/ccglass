@@ -5,6 +5,10 @@
 import http from "node:http";
 import https from "node:https";
 
+// How often a reply that is still streaming is shown to the dashboard. The
+// client gets every chunk the moment it arrives; this only paces the copy.
+export const LIVE_INTERVAL_MS = 500;
+
 export function createProxy({
   upstream,
   store,
@@ -79,11 +83,17 @@ export function createProxy({
       const startedAt = Date.now();
       if (rec) rec.startedAt = startedAt;
       let finished = false;
+      // What has arrived of the reply so far; set once upstream answers.
+      let received = null;
+      let liveTimer;
       const fail = (error) => {
         if (finished) return;
         finished = true;
+        clearTimeout(liveTimer);
         if (rec) {
-          rec.response = { error: error.message, finishedAt: Date.now() };
+          // Keep what streamed before the break: a reply stopped mid-thought
+          // is often the one worth reading.
+          rec.response = { ...received?.(), error: error.message, finishedAt: Date.now() };
           store.update(rec);
         }
         if (res.destroyed) return;
@@ -131,9 +141,29 @@ export function createProxy({
           res.writeHead(proxyRes.statusCode, responseHeaders);
           const respChunks = [];
           let firstByteAt;
+          received = () =>
+            respChunks.length
+              ? {
+                  status: proxyRes.statusCode,
+                  headers: proxyRes.headers,
+                  raw: Buffer.concat(respChunks).toString("utf8"),
+                  firstByteAt,
+                }
+              : {};
+          const streamed = /text\/event-stream/i.test(proxyRes.headers["content-type"] || "");
+          const showLive = () => {
+            liveTimer = undefined;
+            if (finished) return;
+            rec.response = { ...received(), streaming: true };
+            store.progress(rec);
+          };
           proxyRes.on("data", (c) => {
             if (firstByteAt == null) firstByteAt = Date.now();
-            if (rec) respChunks.push(c);
+            if (rec) {
+              respChunks.push(c);
+              if (streamed && liveTimer === undefined)
+                liveTimer = setTimeout(showLive, LIVE_INTERVAL_MS);
+            }
             if (!res.write(c)) {
               proxyRes.pause();
               res.once("drain", () => proxyRes.resume());
@@ -142,6 +172,7 @@ export function createProxy({
           proxyRes.on("end", () => {
             if (finished) return;
             finished = true;
+            clearTimeout(liveTimer);
             res.end();
             if (!rec) return;
             const doneAt = Date.now();

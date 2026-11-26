@@ -247,7 +247,9 @@ When you're done, remove the proxy settings from your IDE and press `Ctrl-C` to 
   leads back up.
 - **Replay**: a session reads as one timeline, live while it records: the
   prompt you typed, the tool calls it caused with their results, and the
-  reply. A strip of bars shows every request, taller when slower, red when
+  reply. A streamed reply appears while it is generated, its reasoning and
+  text growing about twice a second, and the request is marked **streaming**
+  until it ends. A strip of bars shows every request, taller when slower, red when
   failed and amber when the client cancelled it. Opening a request puts the
   list of requests beside it, each row saying what the request was for: the
   prompt that started it, or the tools whose output it sends back.
@@ -393,10 +395,15 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
   with `[REDACTED]` unless `--no-redact` is explicitly selected. Forwarded
   authentication is unchanged; other headers, bodies, and URLs are not redacted.
 - Reverse-proxy streaming honors downstream backpressure and cancels upstream
-  work when clients disconnect. Interrupted streams are recorded as errors and
-  close the transport rather than appending error text to a started response.
-  The dashboard shows a stream the client closed as **cancelled**, apart from
-  requests that failed.
+  work when clients disconnect. Interrupted streams are recorded as errors, keep
+  the part of the reply that arrived before the break, and close the transport
+  rather than appending error text to a started response. The dashboard shows a
+  stream the client closed as **cancelled**, apart from requests that failed,
+  after whatever reasoning and text it had produced.
+- Each chunk is forwarded to the client the moment it arrives. The dashboard
+  is shown a copy of the reply so far while it streams; that copy is held in
+  memory, and the capture file is written once, when the reply ends or breaks
+  off.
 - The dashboard's **Record** / **Stop** control creates separate recordings
   without interrupting forwarding. Recording begins automatically; stop before
   starting a fresh session. While stopped, the header says **Not saving
@@ -416,7 +423,7 @@ This fork supports the Docker-based inspection setup in `debug-proxy`:
   `entries` (reconstructed request bodies, captured headers, raw responses,
   errors, and timing metadata). It ignores UI filters and works in read-only
   mode. Active sessions export a snapshot, including pending requests with a
-  null response. Stop capture and wait for pending responses before exporting
+  null response and streaming ones with the reply so far (`streaming: true`). Stop capture and wait for pending responses before exporting
   a completed recording. Existing header redaction is preserved; other captured
   data may contain secrets, so sanitize exports before sharing them.
 

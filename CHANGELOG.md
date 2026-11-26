@@ -9,12 +9,15 @@ up to and including 1.1.2 predate this file; see the git history for those.
 
 ### Added
 
+- Chat Completions captures now show the model's reasoning. Ollama's `reasoning`, and the `reasoning_content` used by DeepSeek, vLLM and LM Studio, appear as Thinking rows in the replay and a Reasoning block in the request, for streamed and non-streamed replies and for assistant turns sent back in later requests. Captures recorded earlier display it too, because the reasoning was always saved. Reasoning a client sends back is shown once in the replay, under the request that produced it, and in the request it is tagged with the field that carried it, because servers read only their own name (Ollama ignores `reasoning_content`).
+- Streamed replies appear in the dashboard while they are generated, so a model's thinking can be watched as it happens (for example, to catch it looping). The request is marked **streaming** until it ends. The client still receives every chunk the moment it arrives.
 - `ccglass usage --by-session` now labels each row with the agent's own session name (Claude Code's `/rename` title, else its auto-generated title, else the first prompt), recovered from the Claude Code transcript linked via each request's `metadata.user_id`. The raw timestamp id column is kept alongside so sessions sharing a title stay distinguishable.
 - `ccglass usage --by-timestamp` lists sessions by their raw capture-timestamp id (the id `ccglass rm`/`export` take), without resolving names.
 - The web dashboard's Summary → "by session" table now shows the resolved session name alongside the timestamp id, matching `ccglass usage --by-session`. A new "by timestamp" sub-tab lists sessions by their raw capture-timestamp id only, matching `ccglass usage --by-timestamp`.
 
 ### Changed
 
+- A request cancelled or broken off mid-stream now keeps the part of the reply that arrived, shown before its Cancelled or error row. Previously only the error was saved.
 - Development tooling moved to [Vite+](https://viteplus.dev) 1.5.1 (`vp`): Vite 8, Vitest 5, Oxlint and Oxfmt, configured in `vite.config.ts` (`vitest.config.ts` is gone). New `check`, `lint` and `fmt` scripts; the codebase is formatted with Oxfmt; a pre-commit hook runs `vp check --fix` on staged files. The published CLI is unaffected.
 - Messages sent in OpenAI's `developer` or `system` role (Responses API `input[]`) are named by that role in the session replay, as they already were in Messages, instead of appearing as a prompt the person typed. They count under the Harness filter, not User, and in Chat Completions a `developer` message among the system blocks is titled "Developer message".
 - Dashboard numbers use one vocabulary: **Input (total)** is everything sent to the model, **of which cached** is the part read from cache, and **Output**. The session band, the Summary and a request's Overview previously showed different quantities under the same "Input" label. A rate is shown as "—" when nothing was measured, instead of 0%.

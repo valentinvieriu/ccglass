@@ -100,7 +100,7 @@ export function aggregateSessionStats(records, options = {}) {
 
   for (const rec of scoped) {
     const resp = rec.response;
-    if (!resp || resp.error) continue;
+    if (!resp || resp.error || resp.streaming) continue;
 
     const fmt = detectFormat(rec);
     const A = getAdapter(fmt);

@@ -498,7 +498,8 @@ test(
     await assert.rejects(response.text());
     const [rec] = await updated;
     assert.equal(typeof rec.response.error, "string");
-    assert.equal(rec.response.raw, undefined);
+    // What streamed before the break is kept for reading.
+    assert.equal(rec.response.raw, "data: partial\n\n");
   },
 );
 

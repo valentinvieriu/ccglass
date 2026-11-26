@@ -164,7 +164,7 @@ function apiRequest(roots, store, id) {
   const fmt = detectFormat(rec);
   const A = getAdapter(fmt);
   const body = rec.request?.body || {};
-  const response = rec.response?.raw ? A.reassemble(rec.response.raw) : rec.response;
+  const response = rec.response?.raw ? reassembled(A, rec.response) : rec.response;
   const usage = response?.usage || {};
   const timing = requestTiming(rec, usage);
   return {
@@ -179,6 +179,17 @@ function apiRequest(roots, store, id) {
       estTokens: A.estimateTokens(body),
       usageStats: A.usageStats(usage),
     },
+  };
+}
+
+// The reply as the adapter reads it, keeping what the proxy knows beyond the
+// bytes: that it is still streaming, or that it broke off with an error.
+function reassembled(A, resp) {
+  const parsed = A.reassemble(resp.raw) || {};
+  return {
+    ...parsed,
+    ...(resp.streaming ? { streaming: true } : {}),
+    ...(resp.error && !parsed.error ? { error: resp.error } : {}),
   };
 }
 

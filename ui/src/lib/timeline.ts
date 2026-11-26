@@ -151,8 +151,8 @@ export function flowSteps(
           callId: m.callId,
           text: m.text || "",
         });
-      } else if (m.type === "thinking") {
-        steps.push({ kind: "thinking", text: m.text || "" });
+      } else if (m.type === "thinking" || m.type === "reasoning") {
+        steps.push({ kind: "thinking", text: m.text || "", label: m.label });
       } else if (m.role === "assistant") {
         steps.push({ kind: "assistant", text: m.text || "" });
       } else {
@@ -177,8 +177,10 @@ export function flowSteps(
           text: JSON.stringify(b.input ?? {}, null, 2),
           latest: true,
         });
-      } else if (b.type === "thinking") {
-        steps.push({ kind: "thinking", text: b.thinking ?? "", latest: true });
+      } else if (b.type === "thinking" || b.type === "reasoning") {
+        // The same kind as reasoning sent back in a later request, so the
+        // replay recognises the echo and shows the thought once.
+        steps.push({ kind: "thinking", text: b.thinking ?? b.text ?? "", latest: true });
       } else {
         steps.push({
           kind: "assistant",
@@ -198,7 +200,9 @@ export function flowSteps(
   // nothing to reassemble). Emit a terminal row so the turn stays visible —
   // critical in the live view, where the request side may be suppressed (Codex)
   // and the entry would otherwise disappear entirely.
-  if (!emittedResponse) {
+  // A reply that broke off (cancelled, or the upstream failed mid-stream)
+  // keeps what arrived above and still ends on the row that says so.
+  if (!emittedResponse || rec.response?.error) {
     const status = rec.response?.status;
     const err = r?.error ?? rec.response?.error ?? rec.error;
     if (isCancelError(err) && !(status && status >= 400)) {
@@ -320,6 +324,15 @@ export function smartSummary(step: TimelineStep) {
   }
   if (step.kind === "tools") return `${step.count} tools offered to the model`;
   return oneLine(step.text, 200);
+}
+
+/**
+ * The field a Chat Completions request used to send earlier reasoning back
+ * (`reasoning`, `reasoning_content`, …), read from the adapter's label.
+ */
+export function reasoningFieldTag(step: TimelineStep) {
+  if (step.latest || step.kind !== "thinking") return undefined;
+  return /^msg\[\d+\]\.\w+\.(reasoning\w*)$/.exec(step.label ?? "")?.[1];
 }
 
 export function liveStepKey(s: TimelineStep) {
@@ -565,6 +578,17 @@ export const TAG_INFO: Record<string, { headline: string; desc: string; doc?: st
     headline: "this turn",
     desc: "This step belongs to the assistant's response of the most recent HTTP round-trip. Earlier rows are reconstructed from prior conversation history; this one came in just now over the wire.",
   },
+  // Chat Completions reasoning sent back on an earlier assistant turn, named
+  // by the field that carried it (see reasoningFieldTag).
+  ...Object.fromEntries(
+    ["reasoning", "reasoning_content", "reasoning_text"].map((field) => [
+      field,
+      {
+        headline: field,
+        desc: `The client sent this earlier reasoning back in the \`${field}\` field. A server reads only its own field name: Ollama reads \`reasoning\` and ignores \`reasoning_content\`; DeepSeek, vLLM and LM Studio read \`reasoning_content\`. Even a field the server reads may be dropped by the model's chat template for finished turns. The request's measured input tokens show whether it reached the model.`,
+      },
+    ]),
+  ),
   id: {
     headline: "call id",
     desc: "Tool-call ID assigned by the model when it requested the tool. ccglass uses it to pair a tool_use row with its matching tool_result — they share the same colored left stripe so you can read across.",

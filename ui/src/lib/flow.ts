@@ -6,6 +6,7 @@ import {
   envelopeName,
   flowSteps,
   humanText,
+  reasoningFieldTag,
   smartSummary,
   toolCategory,
 } from "./timeline";
@@ -167,9 +168,11 @@ export function stepItem(
     };
   const thinking =
     step.kind === "thinking" || (step.kind === "assistant" && step.label === "reasoning");
+  const field = reasoningFieldTag(step);
   if (thinking)
     return {
       ...base,
+      tags: field ? [...base.tags, field] : base.tags,
       kind: "thinking",
       name: "Thinking",
       summary: smartSummary(step) || "Empty",

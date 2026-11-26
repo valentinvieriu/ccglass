@@ -44,6 +44,21 @@ function toolView(t) {
   };
 }
 
+// Chat Completions has no standard field for a model's thinking. Ollama sends
+// it as `reasoning`, DeepSeek, vLLM and LM Studio as `reasoning_content`, and
+// some gateways as `reasoning_text`. The same names appear on streamed deltas,
+// on final messages and on assistant turns sent back in the next request.
+const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text"];
+
+function reasoningField(m) {
+  return m ? REASONING_FIELDS.find((key) => typeof m[key] === "string" && m[key]) : undefined;
+}
+
+function chatReasoning(m) {
+  const key = reasoningField(m);
+  return key ? m[key] : "";
+}
+
 function isResponses(body = {}) {
   return body.input !== undefined || body.instructions !== undefined;
 }
@@ -145,9 +160,23 @@ export const openai = {
             },
           ];
         }
+        const thought = chatReasoning(m);
+        const reasoning = thought
+          ? [
+              {
+                // Named by the field that carried it: servers read only their
+                // own name (Ollama ignores `reasoning_content`, for one).
+                label: `msg[${i}].${m.role}.${reasoningField(m)}`,
+                role: m.role,
+                type: "reasoning",
+                text: thought,
+                cache: false,
+              },
+            ]
+          : [];
         // An assistant turn may carry several tool calls; expand one block each.
         if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
-          const out = [];
+          const out = [...reasoning];
           const said = flatten(m.content);
           if (said)
             out.push({
@@ -171,12 +200,15 @@ export const openai = {
           });
           return out;
         }
+        const said = flatten(m.content);
+        if (reasoning.length && !said) return reasoning;
         return [
+          ...reasoning,
           {
             label: `msg[${i}].${m.role}`,
             role: m.role,
             type: "message",
-            text: flatten(m.content),
+            text: said,
             cache: false,
           },
         ];
@@ -265,6 +297,7 @@ export const openai = {
         model = ev.model ?? model;
         for (const ch of ev.choices) {
           if (ch.delta?.content) text += ch.delta.content;
+          reasoningText += chatReasoning(ch.delta);
           if (ch.finish_reason) stop_reason = ch.finish_reason;
           for (const tc of ch.delta?.tool_calls || []) {
             const k = tc.index ?? tc.id ?? 0;
@@ -295,7 +328,8 @@ export const openai = {
   estimateTokens(body = {}) {
     let s = String(body.instructions || "");
     const items = isResponses(body) ? body.input : body.messages;
-    for (const it of items || []) s += typeof it === "string" ? it : flatten(it.content);
+    for (const it of items || [])
+      s += typeof it === "string" ? it : flatten(it.content) + chatReasoning(it);
     for (const t of body.tools || []) {
       const f = t.function || t;
       s += (f.description || "") + JSON.stringify(f.parameters || {});
@@ -354,6 +388,8 @@ function normalizeFinal(json, normalizeUsage = normUsage) {
   if (json.choices) {
     const msg = json.choices[0]?.message || {};
     const content = [];
+    const thought = chatReasoning(msg);
+    if (thought) content.push({ type: "reasoning", text: thought });
     if (msg.content) content.push({ type: "text", text: msg.content });
     for (const tc of msg.tool_calls || []) {
       let input;

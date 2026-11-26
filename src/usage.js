@@ -44,6 +44,7 @@ function deriveTotals(b) {
 // than the request body, which is empty for Bedrock/gateway-proxied traffic
 // and would otherwise bucket every such request under "unknown".
 function usageFor(rec) {
+  if (rec.response?.error || rec.response?.streaming) return null;
   const adapter = getAdapter(detectFormat(rec));
   const resp = rec.response?.raw ? adapter.reassemble(rec.response.raw) : rec.response || {};
   const usage = resp?.usage;

@@ -115,6 +115,70 @@ test("openai.reassemble rebuilds Chat Completions stream", () => {
   assert.equal(r.usage.output_tokens, 3);
 });
 
+test("openai.reassemble keeps Chat Completions reasoning from Ollama and DeepSeek streams", () => {
+  const ollama = [
+    `data: {"model":"qwen3","choices":[{"delta":{"role":"assistant","content":"","reasoning":"Let me "}}]}`,
+    `data: {"choices":[{"delta":{"content":"","reasoning":"think."}}]}`,
+    `data: {"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}`,
+    `data: [DONE]`,
+  ].join("\n");
+  const r = openai.reassemble(ollama);
+  assert.deepEqual(r.content, [
+    { type: "reasoning", text: "Let me think." },
+    { type: "text", text: "Done." },
+  ]);
+
+  const deepseek = `data: {"choices":[{"delta":{"reasoning_content":"Hmm"}}]}\ndata: [DONE]`;
+  assert.deepEqual(openai.reassemble(deepseek).content, [{ type: "reasoning", text: "Hmm" }]);
+});
+
+test("openai.reassemble keeps reasoning on a non-streamed Chat Completions reply", () => {
+  const r = openai.reassemble(
+    JSON.stringify({
+      model: "qwen3",
+      choices: [
+        {
+          message: { role: "assistant", content: "42", reasoning_content: "Compute." },
+          finish_reason: "stop",
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(r.content, [
+    { type: "reasoning", text: "Compute." },
+    { type: "text", text: "42" },
+  ]);
+});
+
+test("openai.view shows reasoning sent back on earlier assistant turns", () => {
+  const v = openai.view({
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "", reasoning: "Plan the call.", tool_calls: [] },
+      {
+        role: "assistant",
+        content: null,
+        reasoning_content: "Use ls.",
+        tool_calls: [{ id: "c1", function: { name: "ls", arguments: "{}" } }],
+      },
+    ],
+  });
+  assert.deepEqual(
+    v.messages.map((m) => [m.type, m.text]),
+    [
+      ["message", "hi"],
+      ["reasoning", "Plan the call."],
+      ["reasoning", "Use ls."],
+      ["tool_use", "{}"],
+    ],
+  );
+  // Labelled by the field that carried it: servers read only their own name.
+  assert.deepEqual(
+    v.messages.filter((m) => m.type === "reasoning").map((m) => m.label),
+    ["msg[1].assistant.reasoning", "msg[2].assistant.reasoning_content"],
+  );
+});
+
 test("openai.usageStats subtracts cached tokens from input without billing fields", () => {
   const c = openai.usageStats({
     input_tokens: 1000,
